@@ -6,7 +6,7 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 """
 Webhook 通知模块
-支持企业微信群机器人和通用 Webhook
+支持企业微信群机器人、飞书群机器人和通用 Webhook
 """
 
 import httpx
@@ -56,6 +56,21 @@ class WebhookNotifier:
     def _is_wecom(self, url: str) -> bool:
         return "qyapi.weixin.qq.com" in url
 
+    def _is_feishu(self, url: str) -> bool:
+        """飞书群机器人 webhook"""
+        return "open.feishu.cn" in url or "open.larksuite.com" in url
+
+    @staticmethod
+    def _template_for_event(event: str) -> str:
+        """根据事件类型选择飞书卡片颜色模板"""
+        if event in ("login_expired", "login_expiring_critical"):
+            return "red"
+        if event in ("login_expiring_soon", "content_fetch_failed"):
+            return "orange"
+        if event == "verification_required":
+            return "yellow"
+        return "green"  # login_success etc.
+
     def _build_payload(self, url: str, event: str, data: Dict) -> dict:
         """根据 webhook 类型构造消息体"""
         label = EVENT_LABELS.get(event, event)
@@ -70,6 +85,26 @@ class WebhookNotifier:
             return {
                 "msgtype": "markdown",
                 "markdown": {"content": "\n".join(lines)},
+            }
+
+        if self._is_feishu(url):
+            return {
+                "msg_type": "interactive",
+                "card": {
+                    "header": {
+                        "title": {"tag": "plain_text", "content": label},
+                        "template": self._template_for_event(event),
+                    },
+                    "elements": [
+                        {
+                            "tag": "div",
+                            "text": {
+                                "tag": "lark_md",
+                                "content": "\n".join(lines),
+                            },
+                        }
+                    ],
+                },
             }
 
         return {
@@ -100,11 +135,21 @@ class WebhookNotifier:
 
                 ct = resp.headers.get("content-type", "")
                 body = resp.json() if "json" in ct else {}
-                errcode = body.get("errcode", 0)
-                if errcode != 0:
-                    errmsg = body.get("errmsg", "unknown")
-                    logger.error("Webhook errcode=%s: %s", errcode, errmsg)
-                    return False
+
+                # 企业微信: errcode=0 表示成功
+                if self._is_wecom(url):
+                    errcode = body.get("errcode", 0)
+                    if errcode != 0:
+                        errmsg = body.get("errmsg", "unknown")
+                        logger.error("Webhook errcode=%s: %s", errcode, errmsg)
+                        return False
+                # 飞书: code=0 表示成功
+                elif self._is_feishu(url):
+                    code = body.get("code", 0)
+                    if code != 0:
+                        msg = body.get("msg", "unknown")
+                        logger.error("Feishu webhook code=%s: %s", code, msg)
+                        return False
 
             self._last_notification[event] = now
             logger.info("Webhook sent: %s", event)
