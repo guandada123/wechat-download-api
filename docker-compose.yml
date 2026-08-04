@@ -15,16 +15,13 @@
 services:
   wechat-api:
     image: tmwgsicp/wechat-download-api:latest
-    # Or build locally:
-    # build: .
     container_name: wechat-download-api
     restart: unless-stopped
+    user: "0:0"
     ports:
-      - "5050:5000"
+      - "5001:5000"
     volumes:
-      # Persist SQLite database and credentials
       - ./data:/app/data
-      # Config file (read-only - credentials saved to data/)
       - ./.env:/app/.env:ro
     environment:
       - TZ=Asia/Shanghai
