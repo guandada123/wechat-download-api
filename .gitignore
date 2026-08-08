@@ -106,3 +106,6 @@ WECHATRSS_*.md
 *_DISCUSSION_*.md
 *_DESIGN_*.md
 *_PILOT_*.md
+
+# 本地运行记录（不推公开 fork）
+.workbuddy/
