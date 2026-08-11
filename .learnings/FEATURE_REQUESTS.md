@@ -1,4 +1,4 @@
-# Feature Requests (wechat-download-api)
+# Feature Requests (wechat_api)
 
 Capabilities requested by the user.
 

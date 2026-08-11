@@ -1,4 +1,4 @@
-# Learnings (wechat-download-api)
+# Learnings (wechat_api)
 
 Corrections, insights, and knowledge gaps captured during development.
 

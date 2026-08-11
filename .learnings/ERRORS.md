@@ -1,4 +1,4 @@
-# Errors (wechat-download-api)
+# Errors (wechat_api)
 
 Command failures and integration errors.
 
