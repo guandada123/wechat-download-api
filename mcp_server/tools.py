@@ -1,5 +1,6 @@
 """开源版（单用户）MCP tools。鉴权由 app 层的静态 Bearer Token 中间件统一把关，
 本层不再做 per-user 门禁，直接调数据适配层。"""
+
 import logging
 
 from mcp.server.fastmcp.exceptions import ToolError
@@ -31,7 +32,9 @@ def register_tools(mcp, adapter):
             raise ToolError(str(e))
 
     @mcp.tool()
-    async def get_recent_articles(since: int = 0, limit: int = 30, source_id: str = "") -> dict:
+    async def get_recent_articles(
+        since: int = 0, limit: int = 30, source_id: str = ""
+    ) -> dict:
         """按时间增量拉取已抓取的文章元数据（不含正文）。
 
         - since: Unix 时间戳，只返回 publish_time > since 的文章；首次传 0，之后传上次返回的 next_since 增量同步。
@@ -64,5 +67,11 @@ def register_tools(mcp, adapter):
         """取消订阅一个公众号（按 fakeid）。返回 {success, message}。"""
         return await adapter.unsubscribe_account(fakeid)
 
-    return [list_subscriptions, search_accounts, get_recent_articles,
-            read_article, subscribe_account, unsubscribe_account]
+    return [
+        list_subscriptions,
+        search_accounts,
+        get_recent_articles,
+        read_article,
+        subscribe_account,
+        unsubscribe_account,
+    ]

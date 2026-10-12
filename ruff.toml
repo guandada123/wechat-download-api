@@ -1,0 +1,9 @@
+# Ruff 配置 — wechat-download-api（fork of tmwgsicp/wechat-download-api）
+# 2026-10-13 首次引入代码门禁：默认规则集（E4/E7/E9/F）+ 一处有据例外。
+# 历史存量 41 项违规已清理（18 未用导入 / 10 f-string 空占位 / 9 E402 / 2 死变量 /
+# 1 裸 except / 1 歧义变量名），此后由 pre-commit + CI 共同守住。
+
+[lint.per-file-ignores]
+# app.py：load_dotenv() 必须在读取环境变量的模块导入**之前**执行
+# （路由/工具模块可能在导入期读 env）——此处的 E402 是有意的加载顺序设计，非疏忽。
+"app.py" = ["E402"]

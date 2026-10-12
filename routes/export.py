@@ -22,6 +22,7 @@
 
 范围参数：since / before / limit → 全部 / 最近 N / 时间窗 / 增量（自某时间之后）。
 """
+
 import asyncio
 import io
 import html as html_module
@@ -41,15 +42,17 @@ from utils.export_render import inline_images, render_pdf
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-MAX_EXPORT = 3000       # md/html/xlsx/json 单次上限（纯读库，可放宽）
-MAX_EXPORT_DOC = 500    # Word/EPUB 上限：要现抓图内嵌，保守些
-MAX_EXPORT_PDF = 200    # PDF 上限：xhtml2pdf 纯 Python 渲染最慢，压最狠
+MAX_EXPORT = 3000  # md/html/xlsx/json 单次上限（纯读库，可放宽）
+MAX_EXPORT_DOC = 500  # Word/EPUB 上限：要现抓图内嵌，保守些
+MAX_EXPORT_PDF = 200  # PDF 上限：xhtml2pdf 纯 Python 渲染最慢，压最狠
 
 
 def _cn_date(pt: int) -> str:
     if not pt:
         return ""
-    return datetime.fromtimestamp(pt, timezone(timedelta(hours=8))).strftime("%Y-%m-%d %H:%M")
+    return datetime.fromtimestamp(pt, timezone(timedelta(hours=8))).strftime(
+        "%Y-%m-%d %H:%M"
+    )
 
 
 def _load_articles(fakeid: str, since: int, before: int, limit: int):
@@ -70,12 +73,24 @@ def _download_headers(filename: str) -> dict:
 
 # ── Markdown 合集（zip，每篇一文件）────────────────────────────────────
 
-@router.get("/export/account/{fakeid}.zip", summary="整号导出为 Markdown 合集（zip，每篇一文件）")
+
+@router.get(
+    "/export/account/{fakeid}.zip",
+    summary="整号导出为 Markdown 合集（zip，每篇一文件）",
+)
 async def export_account_md_zip(
     fakeid: str,
-    since: int = Query(0, ge=0, description="只导 publish_time>=since 的文章（时间窗起点/增量，秒级时间戳）"),
-    before: int = Query(0, ge=0, description="只导 publish_time<=before 的文章（时间窗终点）"),
-    limit: int = Query(MAX_EXPORT, ge=1, le=MAX_EXPORT, description="最多导出篇数（最近优先）"),
+    since: int = Query(
+        0,
+        ge=0,
+        description="只导 publish_time>=since 的文章（时间窗起点/增量，秒级时间戳）",
+    ),
+    before: int = Query(
+        0, ge=0, description="只导 publish_time<=before 的文章（时间窗终点）"
+    ),
+    limit: int = Query(
+        MAX_EXPORT, ge=1, le=MAX_EXPORT, description="最多导出篇数（最近优先）"
+    ),
 ):
     nickname, articles, total = _load_articles(fakeid, since, before, limit)
     if not articles:
@@ -85,7 +100,9 @@ async def export_account_md_zip(
     buf = io.BytesIO()
     index_lines = [f"# {nickname} · 导出索引", "", f"共导出 {len(articles)} 篇"]
     if truncated:
-        index_lines.append(f"（该范围实际可见 {total} 篇，本次只导出最新 {len(articles)} 篇，缩小时间范围可导出更早的）")
+        index_lines.append(
+            f"（该范围实际可见 {total} 篇，本次只导出最新 {len(articles)} 篇，缩小时间范围可导出更早的）"
+        )
     index_lines.append("")
 
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
@@ -93,16 +110,22 @@ async def export_account_md_zip(
         for i, a in enumerate(articles, 1):
             md = _build_article_markdown(a, nickname)
             fname = _safe_md_filename(a.get("title") or "", a.get("id"))
-            entry = f"{i:03d}_{fname}"          # 前缀序号：稳定排序 + 防同名覆盖
+            entry = f"{i:03d}_{fname}"  # 前缀序号：稳定排序 + 防同名覆盖
             if entry in seen:
                 entry = f"{i:03d}_{a.get('id')}_{fname}"
             seen.add(entry)
             zf.writestr(entry, md)
-            index_lines.append(f"- [{_cn_date(a.get('publish_time') or 0)}] {a.get('title') or '(无标题)'} → `{entry}`")
+            index_lines.append(
+                f"- [{_cn_date(a.get('publish_time') or 0)}] {a.get('title') or '(无标题)'} → `{entry}`"
+            )
         zf.writestr("INDEX.md", "\n".join(index_lines) + "\n")
 
     filename = f"{nickname}_导出_{len(articles)}篇.zip"
-    return Response(content=buf.getvalue(), media_type="application/zip", headers=_download_headers(filename))
+    return Response(
+        content=buf.getvalue(),
+        media_type="application/zip",
+        headers=_download_headers(filename),
+    )
 
 
 # ── 单文件 HTML 合集 ──────────────────────────────────────────────────
@@ -135,7 +158,7 @@ def _article_html_fragment(a: dict, nickname: str) -> str:
         f'<h1 class="wx-title">{title}</h1>'
         f'<div class="wx-meta">{author} · {date_str} · {src_link}</div>'
         f'<div class="wx-content">{a.get("content") or ""}</div>'
-        f'</article>\n'
+        f"</article>\n"
     )
 
 
@@ -147,7 +170,7 @@ def _build_combined_html(nickname: str, articles: list, note: str) -> str:
     )
     note_html = f'<p class="wx-book-sub">{html_module.escape(note)}</p>' if note else ""
     return (
-        "<!DOCTYPE html><html lang=\"zh-CN\"><head><meta charset=\"utf-8\">"
+        '<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8">'
         '<meta name="viewport" content="width=device-width,initial-scale=1">'
         f"<title>{html_module.escape(nickname)} · 文章合集</title>"
         f"<style>{_HTML_STYLE}</style></head><body>"
@@ -155,7 +178,7 @@ def _build_combined_html(nickname: str, articles: list, note: str) -> str:
         f'<p class="wx-book-sub">共 {len(fragments)} 篇 · 由 WeChat Download API 导出</p>'
         f"{note_html}"
         f'<nav class="wx-toc"><ol>{toc_items}</ol></nav>'
-        f'{"".join(fragments)}'
+        f"{''.join(fragments)}"
         "</body></html>"
     )
 
@@ -176,7 +199,9 @@ async def export_account_html(
 
     doc = _build_combined_html(nickname, articles, note)
     filename = f"{nickname}_合集_{len(articles)}篇.html"
-    return Response(content=doc, media_type="text/html", headers=_download_headers(filename))
+    return Response(
+        content=doc, media_type="text/html", headers=_download_headers(filename)
+    )
 
 
 # ── PDF（自包含内嵌图片，离线可读）────────────────────────────────────
@@ -184,7 +209,9 @@ async def export_account_html(
 # xhtml2pdf(reportlab) 不认 CSS 关键字(color:initial/inherit/unset、var()…)会直接抛错崩掉整份 PDF；
 # 且微信那堆内联样式 xhtml2pdf 本就基本忽略、还会导致图文重叠。故 PDF 前剥掉内联 style 与 style/script 块，
 # 只留语义 HTML，交给下方干净 CSS 渲染（更稳更整齐）。
-_PDF_STRIP_BLOCK = re.compile(r'<(style|script)\b[^>]*>.*?</\1>', re.IGNORECASE | re.DOTALL)
+_PDF_STRIP_BLOCK = re.compile(
+    r"<(style|script)\b[^>]*>.*?</\1>", re.IGNORECASE | re.DOTALL
+)
 _PDF_STRIP_STYLEATTR = re.compile(r'\sstyle\s*=\s*"[^"]*"', re.IGNORECASE)
 _PDF_STRIP_STYLEATTR2 = re.compile(r"\sstyle\s*=\s*'[^']*'", re.IGNORECASE)
 
@@ -242,30 +269,34 @@ def _build_pdf_html(nickname: str, articles: list, note: str) -> str:
     body = "".join(parts)
     return (
         '<!DOCTYPE html><html><head><meta charset="utf-8"><style>'
-        '@page{size:a4;margin:1.6cm 1.4cm}'
-        'body,div,p,span,td,h1,h2,h3,li{font-family:STSong-Light}'
-        'body{font-size:11pt;line-height:1.6;color:#222}'
-        '.book{font-size:17pt;font-weight:bold;margin-bottom:2pt}'
-        '.sub{color:#888;font-size:9pt;margin:0 0 10pt}'
-        '.art{margin-top:14pt;padding-top:10pt;border-top:1px solid #ccc}'
-        '.t{font-size:14pt;font-weight:bold;margin-bottom:3pt}'
-        '.m{color:#888;font-size:9pt;margin-bottom:8pt}'
-        '.c img{max-width:100%}'
-        '</style></head><body>'
+        "@page{size:a4;margin:1.6cm 1.4cm}"
+        "body,div,p,span,td,h1,h2,h3,li{font-family:STSong-Light}"
+        "body{font-size:11pt;line-height:1.6;color:#222}"
+        ".book{font-size:17pt;font-weight:bold;margin-bottom:2pt}"
+        ".sub{color:#888;font-size:9pt;margin:0 0 10pt}"
+        ".art{margin-top:14pt;padding-top:10pt;border-top:1px solid #ccc}"
+        ".t{font-size:14pt;font-weight:bold;margin-bottom:3pt}"
+        ".m{color:#888;font-size:9pt;margin-bottom:8pt}"
+        ".c img{max-width:100%}"
+        "</style></head><body>"
         f'<div class="book">{html_module.escape(nickname)}</div>'
         f'<p class="sub">共 {len(articles)} 篇 · 由 WeChat Download API 导出</p>{note_html}'
-        f'{body}</body></html>'
+        f"{body}</body></html>"
     )
 
 
-@router.get("/export/account/{fakeid}.pdf", summary="整号导出为 PDF（图片内嵌，离线可读）")
+@router.get(
+    "/export/account/{fakeid}.pdf", summary="整号导出为 PDF（图片内嵌，离线可读）"
+)
 async def export_account_pdf(
     fakeid: str,
     since: int = Query(0, ge=0),
     before: int = Query(0, ge=0),
     limit: int = Query(MAX_EXPORT_PDF, ge=1, le=MAX_EXPORT_PDF),
 ):
-    nickname, articles, total = _load_articles(fakeid, since, before, min(limit, MAX_EXPORT_PDF))
+    nickname, articles, total = _load_articles(
+        fakeid, since, before, min(limit, MAX_EXPORT_PDF)
+    )
     if not articles:
         raise HTTPException(404, "该范围内没有可导出的文章（可能正文还没抓取完成）")
     note = ""
@@ -274,25 +305,37 @@ async def export_account_pdf(
 
     raw_html = _build_pdf_html(nickname, articles, note)
     self_contained = await inline_images(raw_html, max_side=900)  # 高分源图更清晰
-    self_contained = _cap_pdf_img_width(self_contained, cap_px=620)  # 显示宽封顶，防溢出
+    self_contained = _cap_pdf_img_width(
+        self_contained, cap_px=620
+    )  # 显示宽封顶，防溢出
     pdf_bytes = await asyncio.to_thread(render_pdf, self_contained)
     if not pdf_bytes:
         raise HTTPException(500, "PDF 生成失败")
 
     filename = f"{nickname}_{len(articles)}篇.pdf"
-    return Response(content=pdf_bytes, media_type="application/pdf", headers=_download_headers(filename))
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers=_download_headers(filename),
+    )
 
 
 # ── Word(.docx) ───────────────────────────────────────────────────────
 
-@router.get("/export/account/{fakeid}.docx", summary="整号导出为 Word(.docx，图去重压缩，可编辑离线)")
+
+@router.get(
+    "/export/account/{fakeid}.docx",
+    summary="整号导出为 Word(.docx，图去重压缩，可编辑离线)",
+)
 async def export_account_docx(
     fakeid: str,
     since: int = Query(0, ge=0),
     before: int = Query(0, ge=0),
     limit: int = Query(MAX_EXPORT_DOC, ge=1, le=MAX_EXPORT_DOC),
 ):
-    nickname, articles, total = _load_articles(fakeid, since, before, min(limit, MAX_EXPORT_DOC))
+    nickname, articles, total = _load_articles(
+        fakeid, since, before, min(limit, MAX_EXPORT_DOC)
+    )
     if not articles:
         raise HTTPException(404, "该范围内没有可导出的文章（可能正文还没抓取完成）")
     note = ""
@@ -300,6 +343,7 @@ async def export_account_docx(
         note = f"该范围实际可见 {total} 篇，本次只导出最新 {len(articles)} 篇（Word 单次上限 {MAX_EXPORT_DOC} 篇，缩小时间范围可导更早的）"
 
     from utils.docx_render import build_docx  # 局部导入：仅 docx 导出时才拉 python-docx
+
     docx_bytes = await build_docx(nickname, articles, note, max_side=800)
 
     filename = f"{nickname}_{len(articles)}篇.docx"
@@ -312,14 +356,20 @@ async def export_account_docx(
 
 # ── EPUB ──────────────────────────────────────────────────────────────
 
-@router.get("/export/account/{fakeid}.epub", summary="整号导出为 EPUB(合集阅读，图去重，手机/阅读器)")
+
+@router.get(
+    "/export/account/{fakeid}.epub",
+    summary="整号导出为 EPUB(合集阅读，图去重，手机/阅读器)",
+)
 async def export_account_epub(
     fakeid: str,
     since: int = Query(0, ge=0),
     before: int = Query(0, ge=0),
     limit: int = Query(MAX_EXPORT_DOC, ge=1, le=MAX_EXPORT_DOC),
 ):
-    nickname, articles, total = _load_articles(fakeid, since, before, min(limit, MAX_EXPORT_DOC))
+    nickname, articles, total = _load_articles(
+        fakeid, since, before, min(limit, MAX_EXPORT_DOC)
+    )
     if not articles:
         raise HTTPException(404, "该范围内没有可导出的文章（可能正文还没抓取完成）")
     note = ""
@@ -327,6 +377,7 @@ async def export_account_epub(
         note = f"该范围实际可见 {total} 篇，本次只导出最新 {len(articles)} 篇（EPUB 单次上限 {MAX_EXPORT_DOC} 篇）"
 
     from utils.epub_render import build_epub  # 局部导入：仅 EPUB 导出时才拉 ebooklib
+
     epub_bytes = await build_epub(nickname, articles, note, max_side=800)
 
     filename = f"{nickname}_{len(articles)}篇.epub"
@@ -339,15 +390,19 @@ async def export_account_epub(
 
 # ── 表格导出（元数据，纯读库零抓图）──────────────────────────────────
 
+
 def _meta_rows(nickname: str, articles: list) -> list:
-    return [{
-        "标题": a.get("title") or "",
-        "作者": a.get("author") or nickname,
-        "发布时间": _cn_date(a.get("publish_time") or 0),
-        "发布时间戳": a.get("publish_time") or 0,
-        "原文链接": a.get("link") or "",
-        "公众号": nickname,
-    } for a in articles]
+    return [
+        {
+            "标题": a.get("title") or "",
+            "作者": a.get("author") or nickname,
+            "发布时间": _cn_date(a.get("publish_time") or 0),
+            "发布时间戳": a.get("publish_time") or 0,
+            "原文链接": a.get("link") or "",
+            "公众号": nickname,
+        }
+        for a in articles
+    ]
 
 
 @router.get("/export/account/{fakeid}.xlsx", summary="整号文章信息导出为 Excel 表")
@@ -363,6 +418,7 @@ async def export_account_xlsx(
     rows = _meta_rows(nickname, articles)
 
     from openpyxl import Workbook  # 局部导入
+
     wb = Workbook()
     ws = wb.active
     ws.title = "文章列表"
@@ -394,8 +450,12 @@ async def export_account_json(
         raise HTTPException(404, "该范围内没有可导出的文章")
     rows = _meta_rows(nickname, articles)
     import json as _json
-    body = _json.dumps({"account": nickname, "count": len(rows), "articles": rows},
-                       ensure_ascii=False, indent=2)
+
+    body = _json.dumps(
+        {"account": nickname, "count": len(rows), "articles": rows},
+        ensure_ascii=False,
+        indent=2,
+    )
     filename = f"{nickname}_{len(rows)}篇.json"
     return Response(
         content=body.encode("utf-8"),

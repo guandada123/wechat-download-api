@@ -35,7 +35,7 @@ def _get_conn() -> sqlite3.Connection:
 def init_db():
     """建表（幂等）"""
     conn = _get_conn()
-    
+
     # 先创建不依赖其他表的基础表
     conn.executescript("""
         -- 分类表（先创建，因为 subscriptions 依赖它）
@@ -47,7 +47,7 @@ def init_db():
             sort_order  INTEGER NOT NULL DEFAULT 0,
             created_at  INTEGER NOT NULL
         );
-        
+
         -- 黑名单表
         CREATE TABLE IF NOT EXISTS fakeid_blacklist (
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -60,24 +60,26 @@ def init_db():
             unblacklisted_at INTEGER DEFAULT NULL,
             note        TEXT NOT NULL DEFAULT ''
         );
-        
+
         CREATE INDEX IF NOT EXISTS idx_blacklist_active ON fakeid_blacklist(is_active);
     """)
     conn.commit()
-    
+
     # 检查 subscriptions 表是否存在
     cursor = conn.execute(
         "SELECT name FROM sqlite_master WHERE type='table' AND name='subscriptions'"
     )
     table_exists = cursor.fetchone() is not None
-    
+
     if table_exists:
         # 表已存在，检查是否有 category_id 列
         cursor = conn.execute("PRAGMA table_info(subscriptions)")
         columns = [row[1] for row in cursor.fetchall()]
         if "category_id" not in columns:
             # 添加 category_id 列
-            conn.execute("ALTER TABLE subscriptions ADD COLUMN category_id INTEGER DEFAULT NULL")
+            conn.execute(
+                "ALTER TABLE subscriptions ADD COLUMN category_id INTEGER DEFAULT NULL"
+            )
             conn.commit()
             logger.info("Added category_id column to subscriptions table")
     else:
@@ -95,7 +97,7 @@ def init_db():
             );
         """)
         conn.commit()
-    
+
     # 创建 articles 表
     conn.executescript("""
         CREATE TABLE IF NOT EXISTS articles (
@@ -120,25 +122,31 @@ def init_db():
         CREATE INDEX IF NOT EXISTS idx_subscriptions_category ON subscriptions(category_id);
     """)
     conn.commit()
-    
+
     # 检查并添加 source 字段（用于区分轮询器文章和历史文章）
     cursor = conn.execute("PRAGMA table_info(articles)")
     columns = [row[1] for row in cursor.fetchall()]
     if "source" not in columns:
         logger.info("Adding source column to articles table")
-        conn.execute("ALTER TABLE articles ADD COLUMN source TEXT NOT NULL DEFAULT 'poll'")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_articles_source ON articles(source)")
+        conn.execute(
+            "ALTER TABLE articles ADD COLUMN source TEXT NOT NULL DEFAULT 'poll'"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_articles_source ON articles(source)"
+        )
         conn.commit()
         logger.info("Added source column and index to articles table")
-    
+
     conn.close()
     logger.info("RSS database initialized: %s", DB_PATH)
 
 
 # ── 订阅管理 ─────────────────────────────────────────────
 
-def add_subscription(fakeid: str, nickname: str = "",
-                     alias: str = "", head_img: str = "") -> bool:
+
+def add_subscription(
+    fakeid: str, nickname: str = "", alias: str = "", head_img: str = ""
+) -> bool:
     conn = _get_conn()
     try:
         conn.execute(
@@ -202,11 +210,12 @@ def update_last_poll(fakeid: str):
 
 # ── 文章缓存 ─────────────────────────────────────────────
 
+
 def save_articles(fakeid: str, articles: List[Dict], source: str = "poll") -> int:
     """
     批量保存文章，返回新增数量。
     If an article already exists but has empty content, update it with new content.
-    
+
     Args:
         fakeid: 公众号ID
         articles: 文章列表
@@ -260,8 +269,7 @@ def get_articles(fakeid: str, limit: int = 20) -> List[Dict]:
     conn = _get_conn()
     try:
         rows = conn.execute(
-            "SELECT * FROM articles WHERE fakeid=? "
-            "ORDER BY publish_time DESC LIMIT ?",
+            "SELECT * FROM articles WHERE fakeid=? ORDER BY publish_time DESC LIMIT ?",
             (fakeid, limit),
         ).fetchall()
         return [dict(r) for r in rows]
@@ -286,7 +294,9 @@ def get_regular_articles(fakeid: str, limit: int = 50) -> List[Dict]:
         conn.close()
 
 
-def get_historical_articles(fakeid: str, limit: int = 500, offset: int = 0) -> List[Dict]:
+def get_historical_articles(
+    fakeid: str, limit: int = 500, offset: int = 0
+) -> List[Dict]:
     """
     获取历史文章（通过"获取历史文章"功能拉取的文章）
     返回 source='deep_fetch' 的文章，用于独立的历史 RSS，支持分页
@@ -329,7 +339,7 @@ def get_all_articles(limit: int = 50) -> List[Dict]:
     """
     获取所有订阅的常规文章（聚合RSS）
     只返回轮询器拉取的文章（source='poll'），不包含历史文章
-    
+
     [2026-05-06 优化] 使用窗口函数实现"每号限额 + 总数限制"策略：
     - 根据订阅数量动态调整每个号的文章数限制
     - 保证每个订阅号都有文章显示（避免活跃号占满）
@@ -341,26 +351,26 @@ def get_all_articles(limit: int = 50) -> List[Dict]:
         subs = conn.execute("SELECT fakeid FROM subscriptions").fetchall()
         if not subs:
             return []
-        
+
         fakeid_list = [s["fakeid"] for s in subs]
         subscription_count = len(fakeid_list)
-        
+
         # 根据订阅数量计算动态限制
         per_sub_limit, total_limit = _calculate_aggregated_limits(subscription_count)
-        
+
         # 使用实际的 limit 参数作为总数上限（用户可自定义）
         total_limit = min(limit, total_limit)
-        
+
         placeholders = ",".join("?" * len(fakeid_list))
-        
+
         # 使用窗口函数：每个订阅号最多 N 篇，总共最多 M 篇
         rows = conn.execute(
             f"""
             WITH ranked_articles AS (
-                SELECT 
+                SELECT
                     *,
                     ROW_NUMBER() OVER (
-                        PARTITION BY fakeid 
+                        PARTITION BY fakeid
                         ORDER BY publish_time DESC
                     ) AS rn
                 FROM articles
@@ -373,7 +383,7 @@ def get_all_articles(limit: int = 50) -> List[Dict]:
             """,
             (*fakeid_list, per_sub_limit, total_limit),
         ).fetchall()
-        
+
         return [dict(r) for r in rows]
     finally:
         conn.close()
@@ -391,8 +401,9 @@ def get_article_by_id(article_id: int) -> Optional[Dict]:
         conn.close()
 
 
-def get_export_articles(fakeid: str, since: int = 0, before: int = 0,
-                        limit: int = 3000) -> List[Dict]:
+def get_export_articles(
+    fakeid: str, since: int = 0, before: int = 0, limit: int = 3000
+) -> List[Dict]:
     """
     取某号已抓到正文的文章（含 poll + deep_fetch 两种来源），按发布倒序，供整号导出用。
     since/before 为可选时间窗（秒级时间戳，0=不限）。
@@ -433,8 +444,9 @@ def count_export_articles(fakeid: str, since: int = 0, before: int = 0) -> int:
         conn.close()
 
 
-def get_feed_articles(since: int = 0, fakeid: Optional[str] = None,
-                      limit: int = 50) -> List[Dict]:
+def get_feed_articles(
+    since: int = 0, fakeid: Optional[str] = None, limit: int = 50
+) -> List[Dict]:
     """
     按 publish_time 正序 + 增量游标返回本地已抓取文章（含 id），供 feed 同步用。
     客户端保存上次返回的最后一篇 publish_time 作为下次 since，循环拉到空为止。
@@ -457,13 +469,13 @@ def get_feed_articles(since: int = 0, fakeid: Optional[str] = None,
 def _calculate_aggregated_limits(subscription_count: int) -> tuple:
     """
     根据订阅数量动态计算聚合 RSS 的限制策略
-    
+
     Args:
         subscription_count: 订阅数量
-    
+
     Returns:
         (per_sub_limit, total_limit): 每个订阅号的限额、总数上限
-    
+
     策略设计：
     - 每个订阅号统一 30 篇
     - total_limit = subscription_count * 30（精确计算）
@@ -471,21 +483,27 @@ def _calculate_aggregated_limits(subscription_count: int) -> tuple:
     """
     if subscription_count == 0:
         return (0, 0)
-    
+
     per_sub_limit = 30
     total_limit = subscription_count * 30
-    
+
     # 上限：4500 篇（对应 150 个订阅）
     if total_limit > 4500:
         total_limit = 4500
-    
+
     return (per_sub_limit, total_limit)
 
 
 # ── 黑名单管理 ─────────────────────────────────────────────
 
-def add_to_blacklist(fakeid: str, nickname: str = "", reason: str = "manual",
-                     verification_count: int = 0, note: str = "") -> bool:
+
+def add_to_blacklist(
+    fakeid: str,
+    nickname: str = "",
+    reason: str = "manual",
+    verification_count: int = 0,
+    note: str = "",
+) -> bool:
     """添加公众号到黑名单"""
     conn = _get_conn()
     try:
@@ -520,7 +538,9 @@ def delete_blacklist_record(blacklist_id: int) -> bool:
     """永久删除黑名单记录"""
     conn = _get_conn()
     try:
-        conn.execute("DELETE FROM fakeid_blacklist WHERE id=? AND is_active=0", (blacklist_id,))
+        conn.execute(
+            "DELETE FROM fakeid_blacklist WHERE id=? AND is_active=0", (blacklist_id,)
+        )
         conn.commit()
         return conn.total_changes > 0
     finally:
@@ -596,9 +616,12 @@ def increment_verification_count(fakeid: str, nickname: str = "") -> int:
                 conn.execute(
                     "UPDATE fakeid_blacklist SET verification_count=?, is_active=1, "
                     "blacklisted_at=?, note=? WHERE fakeid=?",
-                    (new_count, int(time.time()),
-                     f"自动记录: 触发验证码 {new_count} 次（达到阈值 {threshold}）",
-                     fakeid),
+                    (
+                        new_count,
+                        int(time.time()),
+                        f"自动记录: 触发验证码 {new_count} 次（达到阈值 {threshold}）",
+                        fakeid,
+                    ),
                 )
             else:
                 # 仅累计计数，不动 is_active（保留 admin 手动取消的状态）
@@ -612,17 +635,26 @@ def increment_verification_count(fakeid: str, nickname: str = "") -> int:
                 "INSERT INTO fakeid_blacklist "
                 "(fakeid, nickname, reason, verification_count, is_active, blacklisted_at, note) "
                 "VALUES (?,?,?,?,?,?,?)",
-                (fakeid, nickname, "high_verification", new_count,
-                 1 if new_count >= threshold else 0,
-                 int(time.time()),
-                 f"自动记录: 触发验证码 {new_count} 次"),
+                (
+                    fakeid,
+                    nickname,
+                    "high_verification",
+                    new_count,
+                    1 if new_count >= threshold else 0,
+                    int(time.time()),
+                    f"自动记录: 触发验证码 {new_count} 次",
+                ),
             )
 
         conn.commit()
 
         if new_count >= threshold:
-            logger.warning("Fakeid %s reached %d verification triggers (threshold=%d)",
-                          fakeid[:8], new_count, threshold)
+            logger.warning(
+                "Fakeid %s reached %d verification triggers (threshold=%d)",
+                fakeid[:8],
+                new_count,
+                threshold,
+            )
 
         return new_count
     finally:
@@ -631,14 +663,19 @@ def increment_verification_count(fakeid: str, nickname: str = "") -> int:
 
 # ── 分类管理 ─────────────────────────────────────────────
 
-def create_category(name: str, description: str = "", color: str = "blue") -> Optional[int]:
+
+def create_category(
+    name: str, description: str = "", color: str = "blue"
+) -> Optional[int]:
     """创建分类，返回新分类 ID"""
     conn = _get_conn()
     try:
         # 获取最大 sort_order
-        row = conn.execute("SELECT MAX(sort_order) as max_order FROM categories").fetchone()
+        row = conn.execute(
+            "SELECT MAX(sort_order) as max_order FROM categories"
+        ).fetchone()
         max_order = row["max_order"] or 0
-        
+
         cursor = conn.execute(
             "INSERT INTO categories (name, description, color, sort_order, created_at) "
             "VALUES (?,?,?,?,?)",
@@ -652,8 +689,9 @@ def create_category(name: str, description: str = "", color: str = "blue") -> Op
         conn.close()
 
 
-def update_category(category_id: int, name: str = None, 
-                    description: str = None, color: str = None) -> bool:
+def update_category(
+    category_id: int, name: str = None, description: str = None, color: str = None
+) -> bool:
     """更新分类"""
     conn = _get_conn()
     try:
@@ -668,10 +706,10 @@ def update_category(category_id: int, name: str = None,
         if color is not None:
             updates.append("color=?")
             params.append(color)
-        
+
         if not updates:
             return False
-        
+
         params.append(category_id)
         conn.execute(
             f"UPDATE categories SET {', '.join(updates)} WHERE id=?",
@@ -699,9 +737,9 @@ def list_categories() -> List[Dict]:
     conn = _get_conn()
     try:
         rows = conn.execute("""
-            SELECT c.*, 
+            SELECT c.*,
                    (SELECT COUNT(*) FROM subscriptions s WHERE s.category_id=c.id) AS subscription_count
-            FROM categories c 
+            FROM categories c
             ORDER BY c.sort_order, c.created_at
         """).fetchall()
         return [dict(r) for r in rows]
@@ -754,38 +792,37 @@ def get_articles_by_category(category_id: int, limit: int = 50) -> List[Dict]:
     """
     获取分类下所有订阅的常规文章
     只返回轮询器拉取的文章（source='poll'），不包含历史文章
-    
+
     [2026-05-06 优化] 使用窗口函数实现"每号限额 + 总数限制"策略
     """
     conn = _get_conn()
     try:
         # 获取该分类下的所有fakeid
         subs = conn.execute(
-            "SELECT fakeid FROM subscriptions WHERE category_id=?",
-            (category_id,)
+            "SELECT fakeid FROM subscriptions WHERE category_id=?", (category_id,)
         ).fetchall()
         if not subs:
             return []
-        
+
         fakeid_list = [s["fakeid"] for s in subs]
         subscription_count = len(fakeid_list)
-        
+
         # [2026-05-06 优化] 使用窗口函数实现"每号限额 + 总数限制"策略
         # 根据订阅数量计算动态限制
         per_sub_limit, total_limit = _calculate_aggregated_limits(subscription_count)
         # 使用实际的 limit 参数作为总数上限（用户可自定义）
         total_limit = min(limit, total_limit)
-        
+
         placeholders = ",".join("?" * len(fakeid_list))
-        
+
         # 使用窗口函数：每个订阅号最多 N 篇，总共最多 M 篇
         rows = conn.execute(
             f"""
             WITH ranked_articles AS (
-                SELECT 
+                SELECT
                     *,
                     ROW_NUMBER() OVER (
-                        PARTITION BY fakeid 
+                        PARTITION BY fakeid
                         ORDER BY publish_time DESC
                     ) AS rn
                 FROM articles
@@ -801,5 +838,3 @@ def get_articles_by_category(category_id: int, limit: int = 50) -> List[Dict]:
         return [dict(r) for r in rows]
     finally:
         conn.close()
-
-

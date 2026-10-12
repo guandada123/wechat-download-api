@@ -29,7 +29,6 @@ EVENT_LABELS = {
 
 
 class WebhookNotifier:
-
     def __init__(self):
         self._last_notification: Dict[str, float] = {}
         self._notification_interval = int(
@@ -40,9 +39,11 @@ class WebhookNotifier:
     def webhook_url(self) -> str:
         """每次读取时从 .env 刷新，确保运行中修改配置也能生效"""
         from pathlib import Path
+
         env_path = Path(__file__).resolve().parent.parent / ".env"
         if env_path.exists():
             from dotenv import dotenv_values
+
             vals = dotenv_values(env_path)
             url = vals.get("WEBHOOK_URL", "")
         else:
@@ -123,7 +124,9 @@ class WebhookNotifier:
         now = time.time()
         last = self._last_notification.get(event, 0)
         if now - last < self._notification_interval:
-            logger.debug("Skip duplicate webhook: %s (%ds since last)", event, int(now - last))
+            logger.debug(
+                "Skip duplicate webhook: %s (%ds since last)", event, int(now - last)
+            )
             return False
 
         payload = self._build_payload(url, event, data or {})

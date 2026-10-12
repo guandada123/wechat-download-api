@@ -19,6 +19,7 @@
 全局并发闸限制同时抓图数，避免多个导出同时把服务器和 mmbiz 压垮。
 限额：单次文章数由 export.py 卡；此处再兜底「图片张数 / 总字节」，防单个巨图号把文档撑爆内存。
 """
+
 import asyncio
 import base64
 import io
@@ -50,10 +51,10 @@ def _img_sem() -> asyncio.Semaphore:
 # 进程内原图缓存（跨「同一次服务运行」的多次导出共享最贵的跨境抓取）：
 # 第一次导出把 154 张图抓到内存，之后同号导任意格式/尺寸只需本地重压、不再跨境抓 → 秒出。
 # 存**原图 bytes**（尺寸无关，各格式按各自 max_side 现压）；带总字节上限 + FIFO 淘汰，防内存爆。
-_RAW_CACHE: dict = {}          # url -> raw bytes（dict 保插入序，淘汰取最早）
+_RAW_CACHE: dict = {}  # url -> raw bytes（dict 保插入序，淘汰取最早）
 _RAW_CACHE_BYTES = 0
-_RAW_CACHE_MAX_BYTES = 128 * 1024 * 1024   # 整个缓存最多占 128MB
-_RAW_CACHE_MAX_ITEM = 3 * 1024 * 1024      # 单张超 3MB 不缓存（超大长图，免一张顶掉一堆）
+_RAW_CACHE_MAX_BYTES = 128 * 1024 * 1024  # 整个缓存最多占 128MB
+_RAW_CACHE_MAX_ITEM = 3 * 1024 * 1024  # 单张超 3MB 不缓存（超大长图，免一张顶掉一堆）
 
 
 def _raw_cache_get(url: str):
@@ -72,7 +73,7 @@ def _raw_cache_put(url: str, raw: bytes):
 
 
 # 压好的图缓存（按 尺寸+url）：同尺寸重复导（如先 Word 后 EPUB 都 800）连重压都省，直接拿现成 data-URI。
-_COMP_CACHE: dict = {}          # (max_side, url) -> data_uri str
+_COMP_CACHE: dict = {}  # (max_side, url) -> data_uri str
 _COMP_CACHE_BYTES = 0
 _COMP_CACHE_MAX_BYTES = 96 * 1024 * 1024
 
@@ -88,13 +89,13 @@ def _comp_cache_put(key, data_uri: str):
         _COMP_CACHE_BYTES -= len(_COMP_CACHE.pop(k))
 
 
-_IMG_TAG_RE = re.compile(r'<img\b[^>]*>', re.IGNORECASE)
+_IMG_TAG_RE = re.compile(r"<img\b[^>]*>", re.IGNORECASE)
 _SRC_RE = re.compile(r'\bsrc="([^"]+)"', re.IGNORECASE)
 
 
 def _real_url(src: str) -> str:
     """代理 URL(<host>/api/image?url=X) → 还原直连 X；直连原样返回。"""
-    m = re.search(r'/api/image\?url=(.+)$', src)
+    m = re.search(r"/api/image\?url=(.+)$", src)
     if m:
         return unquote(m.group(1))
     return src
@@ -109,12 +110,17 @@ def _compress_to_datauri(raw: bytes, max_side: int, jpeg_q: int) -> str:
     已够小的图(尺寸够 + 字节小 + jpeg/png)直接原样内嵌，跳过昂贵重编码——微信图多数本就 web 优化过。"""
     try:
         from PIL import Image
+
         im = Image.open(io.BytesIO(raw))
         im.load()
         w, h = im.size
         fmt = (im.format or "").lower()
         # 快路径：尺寸已够小 + 字节不大 + 本就是 jpeg/png → 原样内嵌，省掉解码后重编码的 CPU
-        if max(w, h) <= max_side and len(raw) <= 220 * 1024 and fmt in ("jpeg", "jpg", "png"):
+        if (
+            max(w, h) <= max_side
+            and len(raw) <= 220 * 1024
+            and fmt in ("jpeg", "jpg", "png")
+        ):
             mime = "image/png" if fmt == "png" else "image/jpeg"
             return f"data:{mime};base64," + base64.b64encode(raw).decode()
         if im.mode in ("RGBA", "LA", "P"):
@@ -130,13 +136,17 @@ def _compress_to_datauri(raw: bytes, max_side: int, jpeg_q: int) -> str:
             else:
                 im = im.resize((max(1, round(w * max_side / h)), max_side))
         out = io.BytesIO()
-        im.save(out, format="JPEG", quality=jpeg_q)  # 不加 optimize：显著更快，体积仅略大
+        im.save(
+            out, format="JPEG", quality=jpeg_q
+        )  # 不加 optimize：显著更快，体积仅略大
         return "data:image/jpeg;base64," + base64.b64encode(out.getvalue()).decode()
     except Exception:
         return "data:image/jpeg;base64," + base64.b64encode(raw).decode()
 
 
-async def _fetch_datauri(client: httpx.AsyncClient, url: str, max_side: int, jpeg_q: int):
+async def _fetch_datauri(
+    client: httpx.AsyncClient, url: str, max_side: int, jpeg_q: int
+):
     ck = (max_side, url)
     du = _COMP_CACHE.get(ck)  # 同尺寸重复导：连重压都省
     if du is not None:
@@ -145,8 +155,12 @@ async def _fetch_datauri(client: httpx.AsyncClient, url: str, max_side: int, jpe
     if raw is None:
         async with _img_sem():  # 全局限并发，多导出共享
             try:
-                r = await client.get(url, headers={"Referer": "https://mp.weixin.qq.com/"},
-                                     timeout=12.0, follow_redirects=True)
+                r = await client.get(
+                    url,
+                    headers={"Referer": "https://mp.weixin.qq.com/"},
+                    timeout=12.0,
+                    follow_redirects=True,
+                )
                 if r.status_code != 200 or not r.content:
                     return None
                 raw = r.content
@@ -175,7 +189,9 @@ async def fetch_images_bytes(urls: list, max_side: int, jpeg_q: int = 80) -> dic
     if not urls:
         return out
     async with httpx.AsyncClient() as client:
-        res = await asyncio.gather(*[_fetch_datauri(client, u, max_side, jpeg_q) for u in urls])
+        res = await asyncio.gather(
+            *[_fetch_datauri(client, u, max_side, jpeg_q) for u in urls]
+        )
     for u, du in zip(urls, res):
         if du:
             b = _datauri_to_bytes(du)
@@ -184,8 +200,14 @@ async def fetch_images_bytes(urls: list, max_side: int, jpeg_q: int = 80) -> dic
     return out
 
 
-async def inline_images(html: str, *, max_images: int = 800, max_side: int = 900,
-                        jpeg_q: int = 80, max_total_bytes: int = 55 * 1024 * 1024) -> str:
+async def inline_images(
+    html: str,
+    *,
+    max_images: int = 800,
+    max_side: int = 900,
+    jpeg_q: int = 80,
+    max_total_bytes: int = 55 * 1024 * 1024,
+) -> str:
     """
     把正文里的微信图 <img src> 全部换成内嵌 data-URI（离线自包含）。
     未内嵌（超张数/超总字节/抓取失败/非微信图）的 <img> 直接删除，避免离线破图占位。
@@ -218,7 +240,9 @@ async def inline_images(html: str, *, max_images: int = 800, max_side: int = 900
             if total > max_total_bytes:
                 break
             mapping[u] = data_uri
-    logger.info("export inline_images: %d 张唯一图, 成功内嵌 %d", len(uniq), len(mapping))
+    logger.info(
+        "export inline_images: %d 张唯一图, 成功内嵌 %d", len(uniq), len(mapping)
+    )
 
     def _repl(m):
         tag = m.group(0)
@@ -244,7 +268,10 @@ def _ensure_cjk_font():
         return
     from reportlab.pdfbase import pdfmetrics
     from reportlab.pdfbase.cidfonts import UnicodeCIDFont
-    pdfmetrics.registerFont(UnicodeCIDFont("STSong-Light"))  # reportlab 内置 Adobe 简中，免字体文件
+
+    pdfmetrics.registerFont(
+        UnicodeCIDFont("STSong-Light")
+    )  # reportlab 内置 Adobe 简中，免字体文件
     _CJK_READY = True
 
 
@@ -252,6 +279,7 @@ def render_pdf(self_contained_html: str) -> bytes:
     """自包含 HTML(图片已 data-URI 内嵌) → PDF bytes。同步 CPU 活，调用方请放线程池。"""
     _ensure_cjk_font()
     from xhtml2pdf import pisa
+
     buf = io.BytesIO()
     pisa.CreatePDF(src=self_contained_html, dest=buf, encoding="utf-8")
     return buf.getvalue()

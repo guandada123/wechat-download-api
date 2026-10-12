@@ -14,10 +14,12 @@ from utils.rate_limiter import rate_limiter
 
 router = APIRouter()
 
+
 class StatsResponse(BaseModel):
     """统计响应"""
+
     rate_limit: dict
-    
+
     class Config:
         json_schema_extra = {
             "example": {
@@ -25,21 +27,19 @@ class StatsResponse(BaseModel):
                     "global_requests": 5,
                     "global_limit": 10,
                     "active_ips": 2,
-                    "article_requests": 3
+                    "article_requests": 3,
                 }
             }
         }
+
 
 @router.get("/stats", response_model=StatsResponse, summary="获取API统计信息")
 async def get_stats():
     """
     获取API统计信息
-    
+
     包括:
     - 限频统计
     - 请求统计
     """
-    return {
-        "rate_limit": rate_limiter.get_stats()
-    }
-
+    return {"rate_limit": rate_limiter.get_stats()}

@@ -24,7 +24,12 @@ def is_login_expired(ret, err_msg: str = "") -> bool:
     - ret=200040 'invalid csrf token' → token 失效/不匹配
     """
     msg = (err_msg or "").lower()
-    return ret in (200003, 200040) or "invalid session" in msg or "csrf" in msg or "login" in msg
+    return (
+        ret in (200003, 200040)
+        or "invalid session" in msg
+        or "csrf" in msg
+        or "login" in msg
+    )
 
 
 def is_invalid_fakeid(ret, err_msg: str = "") -> bool:

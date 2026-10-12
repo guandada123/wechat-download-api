@@ -16,6 +16,7 @@ OEBPS/images、正文用相对路径引用（天然去重）。
 
 注：本模块的 article 为 dict（单机版 SQLite 行），字段用 .get 访问。
 """
+
 import io
 import logging
 from datetime import datetime, timezone, timedelta
@@ -31,7 +32,9 @@ logger = logging.getLogger(__name__)
 def _cn_date(pt: int) -> str:
     if not pt:
         return ""
-    return datetime.fromtimestamp(pt, timezone(timedelta(hours=8))).strftime("%Y-%m-%d %H:%M")
+    return datetime.fromtimestamp(pt, timezone(timedelta(hours=8))).strftime(
+        "%Y-%m-%d %H:%M"
+    )
 
 
 def _esc(s: str) -> str:
@@ -76,19 +79,22 @@ def _article_xhtml(a: dict, nickname: str, url2file: dict) -> str:
             tag.attrs = {}
     body = soup.decode()  # bs4 会闭合 void 标签 + 转义文本实体 → XHTML 友好
     title = _esc(a.get("title") or "(无标题)")
-    meta = _esc(f"{a.get('author') or nickname} · {_cn_date(a.get('publish_time') or 0)}")
+    meta = _esc(
+        f"{a.get('author') or nickname} · {_cn_date(a.get('publish_time') or 0)}"
+    )
     # 注意：不要加 <?xml ... encoding=?> 声明——lxml 拒绝解析带 encoding 声明的 unicode 串，
     # 会导致 ebooklib 内部解析失败、章节写成空。ebooklib 写盘时会自行补 xml 头。
     return (
         '<html xmlns="http://www.w3.org/1999/xhtml"><head>'
-        f'<title>{title}</title>'
+        f"<title>{title}</title>"
         '<link rel="stylesheet" href="style/main.css" type="text/css"/></head><body>'
         f'<h1>{title}</h1><p class="meta">{meta}</p>{body}</body></html>'
     )
 
 
-async def build_epub(nickname: str, articles: list, note: str,
-                     max_side: int = 800, jpeg_q: int = 80) -> bytes:
+async def build_epub(
+    nickname: str, articles: list, note: str, max_side: int = 800, jpeg_q: int = 80
+) -> bytes:
     """整号文章 → EPUB bytes。articles 为 dict 列表。"""
     img_map = await fetch_images_bytes(_collect_urls(articles), max_side, jpeg_q)
 
@@ -103,7 +109,9 @@ async def build_epub(nickname: str, articles: list, note: str,
         ext, mt = _img_kind(b)
         fn = f"images/img{i}.{ext}"
         url2file[url] = fn
-        book.add_item(epub.EpubItem(uid=f"img{i}", file_name=fn, media_type=mt, content=b))
+        book.add_item(
+            epub.EpubItem(uid=f"img{i}", file_name=fn, media_type=mt, content=b)
+        )
 
     css = (
         'body{font-family:-apple-system,"PingFang SC","Noto Serif CJK SC",serif;'
@@ -120,12 +128,19 @@ async def build_epub(nickname: str, articles: list, note: str,
         "ul,ol{padding-left:1.4em}li{margin:.3em 0}"
         "hr{border:none;border-top:1px solid #eee;margin:1.5em 0}"
     )
-    book.add_item(epub.EpubItem(uid="style", file_name="style/main.css",
-                                media_type="text/css", content=css))
+    book.add_item(
+        epub.EpubItem(
+            uid="style", file_name="style/main.css", media_type="text/css", content=css
+        )
+    )
 
     chapters = []
     for idx, a in enumerate(articles):
-        c = epub.EpubHtml(title=(a.get("title") or "(无标题)")[:80], file_name=f"ch{idx}.xhtml", lang="zh")
+        c = epub.EpubHtml(
+            title=(a.get("title") or "(无标题)")[:80],
+            file_name=f"ch{idx}.xhtml",
+            lang="zh",
+        )
         c.content = _article_xhtml(a, nickname, url2file)
         book.add_item(c)
         chapters.append(c)

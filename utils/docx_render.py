@@ -15,6 +15,7 @@
 
 注：本模块的 article 为 dict（单机版 SQLite 行），字段用 .get 访问。
 """
+
 import io
 import logging
 from datetime import datetime, timezone, timedelta
@@ -29,8 +30,29 @@ from utils.export_render import fetch_images_bytes, _real_url, _is_wx_image
 logger = logging.getLogger(__name__)
 
 # 块级标签：遇到就断段（各自成独立段落）
-_BLOCK = {"p", "div", "section", "article", "header", "footer", "figure", "figcaption",
-          "blockquote", "li", "ul", "ol", "table", "tr", "td", "h1", "h2", "h3", "h4", "h5", "h6"}
+_BLOCK = {
+    "p",
+    "div",
+    "section",
+    "article",
+    "header",
+    "footer",
+    "figure",
+    "figcaption",
+    "blockquote",
+    "li",
+    "ul",
+    "ol",
+    "table",
+    "tr",
+    "td",
+    "h1",
+    "h2",
+    "h3",
+    "h4",
+    "h5",
+    "h6",
+}
 _LINK_COLOR = RGBColor(0x57, 0x6B, 0x95)
 _META_COLOR = RGBColor(0x88, 0x88, 0x88)
 
@@ -38,7 +60,9 @@ _META_COLOR = RGBColor(0x88, 0x88, 0x88)
 def _cn_date(pt: int) -> str:
     if not pt:
         return ""
-    return datetime.fromtimestamp(pt, timezone(timedelta(hours=8))).strftime("%Y-%m-%d %H:%M")
+    return datetime.fromtimestamp(pt, timezone(timedelta(hours=8))).strftime(
+        "%Y-%m-%d %H:%M"
+    )
 
 
 def _collect_img_urls(articles) -> list:
@@ -56,6 +80,7 @@ def _add_picture(doc: Document, b: bytes):
     """按原始像素宽换算，封顶正文宽 5.8in，不放大小图。"""
     try:
         from PIL import Image
+
         pw, _ = Image.open(io.BytesIO(b)).size
         w_in = min(5.8, max(1.0, pw / 96.0))
     except Exception:
@@ -137,8 +162,9 @@ def _set_cjk_font(doc: Document):
         pass
 
 
-async def build_docx(nickname: str, articles: list, note: str,
-                     max_side: int = 800, jpeg_q: int = 80) -> bytes:
+async def build_docx(
+    nickname: str, articles: list, note: str, max_side: int = 800, jpeg_q: int = 80
+) -> bytes:
     """整号文章 → 真 .docx bytes。图片预抓+去重内嵌。articles 为 dict 列表。"""
     img_map = await fetch_images_bytes(_collect_img_urls(articles), max_side, jpeg_q)
 
@@ -158,7 +184,9 @@ async def build_docx(nickname: str, articles: list, note: str,
     for a in articles:
         doc.add_heading(a.get("title") or "(无标题)", level=1)
         meta = doc.add_paragraph()
-        rm = meta.add_run(f"{a.get('author') or nickname} · {_cn_date(a.get('publish_time') or 0)}")
+        rm = meta.add_run(
+            f"{a.get('author') or nickname} · {_cn_date(a.get('publish_time') or 0)}"
+        )
         rm.font.size = Pt(9)
         rm.font.color.rgb = _META_COLOR
         _add_html(doc, a.get("content") or "", img_map)

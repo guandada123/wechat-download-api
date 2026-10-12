@@ -20,8 +20,11 @@ import httpx
 
 from utils.auth_manager import auth_manager
 from utils import rss_store
-from utils.helpers import extract_article_info, parse_article_url, is_image_text_message, has_article_content, is_article_unavailable, get_unavailable_reason
-from utils.http_client import fetch_page
+from utils.helpers import (
+    has_article_content,
+    is_article_unavailable,
+    get_unavailable_reason,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +40,7 @@ class WechatInvalidFakeidError(Exception):
     触发条件：appmsgpublish 接口返回 ret=200002 且 err_msg="invalid args"
     实测：任何 token+cookie 都无法访问，需要标记为永久失效
     """
+
     pass
 
 
@@ -107,14 +111,17 @@ class RSSPoller:
 
         # 获取活跃黑名单
         blacklisted = set(rss_store.get_active_blacklist_fakeids())
-        
+
         # 过滤掉黑名单中的公众号
         active_fakeids = [f for f in fakeids if f not in blacklisted]
         skipped = len(fakeids) - len(active_fakeids)
-        
+
         if skipped > 0:
-            logger.info("RSS poll: %d subscriptions (%d blacklisted, skipped)", 
-                       len(fakeids), skipped)
+            logger.info(
+                "RSS poll: %d subscriptions (%d blacklisted, skipped)",
+                len(fakeids),
+                skipped,
+            )
         else:
             logger.info("RSS poll: checking %d subscriptions", len(fakeids))
 
@@ -127,23 +134,33 @@ class RSSPoller:
 
                 if articles:
                     # 轮询器拉取的文章标记为 'poll'
-                    new_count = rss_store.save_articles(fakeid, articles, source='poll')
+                    new_count = rss_store.save_articles(fakeid, articles, source="poll")
                     if new_count > 0:
-                        logger.info("RSS: %d new articles for %s", new_count, fakeid[:8])
+                        logger.info(
+                            "RSS: %d new articles for %s", new_count, fakeid[:8]
+                        )
                 rss_store.update_last_poll(fakeid)
-            except WechatInvalidFakeidError as e:
+            except WechatInvalidFakeidError:
                 # [2026-05-18] 同步 SaaS 修复：fakeid 在微信侧已失效，自动加入黑名单
                 # 取该 fakeid 的 nickname（如果数据库里有）便于后续运维查看
                 sub = rss_store.get_subscription(fakeid)
                 nickname = sub.get("nickname", "") if sub else ""
-                logger.warning("Fakeid %s (%s) is invalid on WeChat, adding to blacklist", fakeid[:8], nickname)
+                logger.warning(
+                    "Fakeid %s (%s) is invalid on WeChat, adding to blacklist",
+                    fakeid[:8],
+                    nickname,
+                )
                 try:
                     rss_store.add_to_blacklist(
-                        fakeid, nickname=nickname, reason="invalid_fakeid",
+                        fakeid,
+                        nickname=nickname,
+                        reason="invalid_fakeid",
                         note="[2026-05-18] 微信侧返回 invalid args，fakeid 已失效（注销/改名/重新注册）",
                     )
                 except Exception as bl_err:
-                    logger.warning("Failed to blacklist invalid fakeid %s: %s", fakeid[:8], bl_err)
+                    logger.warning(
+                        "Failed to blacklist invalid fakeid %s: %s", fakeid[:8], bl_err
+                    )
             except Exception as e:
                 logger.error("RSS poll error for %s: %s", fakeid[:8], e)
             await asyncio.sleep(3)
@@ -194,8 +211,12 @@ class RSSPoller:
         if base_resp.get("ret") != 0:
             ret_code = base_resp.get("ret")
             err_msg = base_resp.get("err_msg", "")
-            logger.warning("WeChat API error for %s: ret=%s err_msg=%r",
-                           fakeid[:8], ret_code, err_msg)
+            logger.warning(
+                "WeChat API error for %s: ret=%s err_msg=%r",
+                fakeid[:8],
+                ret_code,
+                err_msg,
+            )
             # [2026-05-18] 同步 SaaS 修复：ret=200002 + "invalid args" → fakeid 已失效
             # 老代码统一返回空 → 静默失败，用户感受不到该号已注销
             # 现在：抛 WechatInvalidFakeidError 让调用方加入黑名单
@@ -226,64 +247,71 @@ class RSSPoller:
             if not isinstance(publish_info, dict):
                 continue
             for a in publish_info.get("appmsgex", []):
-                articles.append({
-                    "aid": a.get("aid", ""),
-                    "title": a.get("title", ""),
-                    "link": a.get("link", ""),
-                    "digest": a.get("digest", ""),
-                    "cover": a.get("cover", ""),
-                    "author": a.get("author", ""),
-                    "publish_time": a.get("update_time", 0),
-                })
+                articles.append(
+                    {
+                        "aid": a.get("aid", ""),
+                        "title": a.get("title", ""),
+                        "link": a.get("link", ""),
+                        "digest": a.get("digest", ""),
+                        "cover": a.get("cover", ""),
+                        "author": a.get("author", ""),
+                        "publish_time": a.get("update_time", 0),
+                    }
+                )
         return articles
 
     async def poll_now(self):
         """手动触发一次轮询"""
         await self._poll_all()
-    
-    async def _enrich_articles_content(self, fakeid: str, articles: List[Dict]) -> List[Dict]:
+
+    async def _enrich_articles_content(
+        self, fakeid: str, articles: List[Dict]
+    ) -> List[Dict]:
         """
         批量获取文章完整内容（并发版）
-        
+
         限制：最多获取 20 篇文章的完整内容（避免大量文章导致轮询过久）
-        
+
         Args:
             articles: 文章列表（包含基本信息）
-            
+
         Returns:
             enriched_articles: 包含完整内容的文章列表
         """
         from utils.article_fetcher import fetch_articles_batch
         from utils.content_processor import process_article_content
-        
+
         # 提取所有文章链接
         article_links = [a.get("link", "") for a in articles if a.get("link")]
-        
+
         if not article_links:
             return articles
-        
+
         # 限制最多获取 20 篇（5个批次可能返回100+篇）
         max_fetch = 20
         if len(article_links) > max_fetch:
-            logger.info("文章数 %d 篇超过限制，仅获取最近 %d 篇的完整内容", 
-                       len(article_links), max_fetch)
+            logger.info(
+                "文章数 %d 篇超过限制，仅获取最近 %d 篇的完整内容",
+                len(article_links),
+                max_fetch,
+            )
             article_links = article_links[:max_fetch]
             articles = articles[:max_fetch]
-        
+
         logger.info("开始批量获取 %d 篇文章的完整内容", len(article_links))
-        
+
         # 获取微信凭证（从环境变量读取）
         wechat_token = os.getenv("WECHAT_TOKEN", "")
         wechat_cookie = os.getenv("WECHAT_COOKIE", "")
-        
+
         results = await fetch_articles_batch(
-            article_links, 
-            max_concurrency=3, 
+            article_links,
+            max_concurrency=3,
             timeout=60,
             wechat_token=wechat_token,
-            wechat_cookie=wechat_cookie
+            wechat_cookie=wechat_cookie,
         )
-        
+
         # 处理结果并合并到原文章数据
         enriched = []
         for article in articles:
@@ -291,13 +319,13 @@ class RSSPoller:
             if not link:
                 enriched.append(article)
                 continue
-            
+
             html = results.get(link)
             if not html:
                 logger.warning("Empty HTML: %s", link[:80])
                 enriched.append(article)
                 continue
-            
+
             # [2026-05-18] 精确化验证码检测（之前用 "验证" 二字误伤大量正文含此字的文章）
             # 微信风控页特有标记：
             #   1. verifycode 出现在 URL/form/script 中（最强信号）
@@ -314,14 +342,20 @@ class RSSPoller:
                 sub = rss_store.get_subscription(fakeid)
                 nickname = sub.get("nickname", "") if sub else ""
                 count = rss_store.increment_verification_count(fakeid, nickname)
-                logger.warning("Verification triggered for %s (count=%d): %s",
-                             fakeid[:8], count, link[:60])
+                logger.warning(
+                    "Verification triggered for %s (count=%d): %s",
+                    fakeid[:8],
+                    count,
+                    link[:60],
+                )
                 enriched.append(article)
                 continue
-            
+
             if is_article_unavailable(html):
                 reason = get_unavailable_reason(html) or "unknown"
-                logger.warning("Article permanently unavailable (%s): %s", reason, link[:80])
+                logger.warning(
+                    "Article permanently unavailable (%s): %s", reason, link[:80]
+                )
                 article["content"] = f"<p>[unavailable] {reason}</p>"
                 article["plain_content"] = f"[unavailable] {reason}"
                 enriched.append(article)
@@ -330,32 +364,35 @@ class RSSPoller:
                 logger.warning("No content in HTML: %s", link[:80])
                 enriched.append(article)
                 continue
-            
+
             try:
                 # 使用 content_processor 处理文章内容（完美保持图文顺序）
                 # 从环境变量读取网站URL,入库时代理图片(与SaaS版策略一致)
                 site_url = os.getenv("SITE_URL", "http://localhost:5000").rstrip("/")
                 result = process_article_content(html, proxy_base_url=site_url)
-                
+
                 # 合并到原文章数据
                 article["content"] = result.get("content", "")
                 article["plain_content"] = result.get("plain_content", "")
-                
+
                 # 如果原始数据没有作者，从 HTML 中提取
                 if not article.get("author"):
                     from utils.helpers import extract_article_info, parse_article_url
+
                     article_info = extract_article_info(html, parse_article_url(link))
                     article["author"] = article_info.get("author", "")
-                
-                logger.info("Content fetched: %s... (%d chars, %d images)",
-                           link[:50],
-                           len(article["content"]), 
-                           len(result.get("images", [])))
+
+                logger.info(
+                    "Content fetched: %s... (%d chars, %d images)",
+                    link[:50],
+                    len(article["content"]),
+                    len(result.get("images", [])),
+                )
             except Exception as e:
                 logger.error("Failed to process content for %s: %s", link[:80], str(e))
-            
+
             enriched.append(article)
-        
+
         return enriched
 
 

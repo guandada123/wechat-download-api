@@ -11,7 +11,7 @@
 import os
 from fastapi import APIRouter, Query, Request
 from pydantic import BaseModel
-from typing import Optional, List
+from typing import Optional
 import time
 import httpx
 import json
@@ -30,23 +30,30 @@ def get_base_url(request: Request) -> str:
     site_url = os.getenv("SITE_URL", "").strip()
     if site_url:
         return site_url.rstrip("/")
-    
+
     proto = request.headers.get("X-Forwarded-Proto", "http")
-    host = request.headers.get("X-Forwarded-Host") or request.headers.get("Host", "localhost:5000")
-    
+    host = request.headers.get("X-Forwarded-Host") or request.headers.get(
+        "Host", "localhost:5000"
+    )
+
     return f"{proto}://{host}"
+
 
 class Account(BaseModel):
     """公众号模型"""
+
     id: str
     name: str
     round_head_img: str
 
+
 class SearchResponse(BaseModel):
     """搜索响应模型"""
+
     success: bool
     data: Optional[dict] = None
     error: Optional[str] = None
+
 
 async def searchbiz_raw(query: str, base_url: str = ""):
     """调用微信 searchbiz，返回 (过滤黑名单后的公众号列表, 错误信息)。
@@ -71,12 +78,12 @@ async def searchbiz_raw(query: str, base_url: str = ""):
                     "random": time.time(),
                     "query": query,
                     "begin": 0,
-                    "count": 5
+                    "count": 5,
                 },
                 headers={
                     "Cookie": cookie,
-                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-                }
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                },
             )
             result = response.json()
 
@@ -84,19 +91,24 @@ async def searchbiz_raw(query: str, base_url: str = ""):
             accounts = result.get("list", [])
             # [2026-05-18] 过滤已知失效号（黑名单）：避免搜到老 fakeid 订阅后拉不到内容
             from utils import rss_store
+
             blacklisted = set(rss_store.get_active_blacklist_fakeids())
             out = []
             for acc in accounts:
                 fid = acc.get("fakeid", "")
                 if fid in blacklisted:
                     continue
-                out.append({
-                    "fakeid": fid,
-                    "nickname": acc.get("nickname", ""),
-                    "alias": acc.get("alias", ""),
-                    "round_head_img": proxy_image_url(acc.get("round_head_img", ""), base_url),
-                    "service_type": acc.get("service_type", 0)
-                })
+                out.append(
+                    {
+                        "fakeid": fid,
+                        "nickname": acc.get("nickname", ""),
+                        "alias": acc.get("alias", ""),
+                        "round_head_img": proxy_image_url(
+                            acc.get("round_head_img", ""), base_url
+                        ),
+                        "service_type": acc.get("service_type", 0),
+                    }
+                )
             return out, None
         else:
             base = result.get("base_resp", {})
@@ -115,7 +127,10 @@ async def searchbiz_raw(query: str, base_url: str = ""):
 
 
 @router.get("/searchbiz", response_model=SearchResponse, summary="搜索公众号")
-async def search_accounts(query: str = Query(..., description="公众号名称或关键词", alias="query"), request: Request = None):
+async def search_accounts(
+    query: str = Query(..., description="公众号名称或关键词", alias="query"),
+    request: Request = None,
+):
     """
     按关键词搜索微信公众号，获取 FakeID。
 

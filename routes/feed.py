@@ -37,7 +37,9 @@ def _base_url(request: Request) -> str:
 @router.get("/feed/articles.json", summary="本地已抓取文章列表（含 id，增量同步）")
 async def feed_articles(
     request: Request,
-    since: int = Query(0, ge=0, description="Unix 时间戳，返回 publish_time > since 的文章；首次传 0"),
+    since: int = Query(
+        0, ge=0, description="Unix 时间戳，返回 publish_time > since 的文章；首次传 0"
+    ),
     fakeid: Optional[str] = Query(None, description="可选，筛选单个公众号"),
     limit: int = Query(50, ge=1, le=200, description="单次返回条数（1-200）"),
 ):
@@ -54,18 +56,22 @@ async def feed_articles(
 
     items = []
     for a in rows:
-        items.append({
-            "id": a["id"],
-            "fakeid": a["fakeid"],
-            "nickname": subs.get(a["fakeid"], ""),
-            "title": a.get("title", ""),
-            "digest": a.get("digest", ""),
-            "author": a.get("author", ""),
-            "publish_time": a.get("publish_time", 0),
-            "link": a.get("link", ""),
-            "cover": proxy_image_url(a.get("cover", ""), base) if a.get("cover") else "",
-            "content_fetched": bool(a.get("content")),
-        })
+        items.append(
+            {
+                "id": a["id"],
+                "fakeid": a["fakeid"],
+                "nickname": subs.get(a["fakeid"], ""),
+                "title": a.get("title", ""),
+                "digest": a.get("digest", ""),
+                "author": a.get("author", ""),
+                "publish_time": a.get("publish_time", 0),
+                "link": a.get("link", ""),
+                "cover": proxy_image_url(a.get("cover", ""), base)
+                if a.get("cover")
+                else "",
+                "content_fetched": bool(a.get("content")),
+            }
+        )
 
     next_since = items[-1]["publish_time"] if items else since
     return {"articles": items, "next_since": next_since}
@@ -84,9 +90,15 @@ def _build_article_markdown(article: dict, nickname: str) -> str:
 
     # 可读日期（UTC+8）；publish_time 原始时间戳保留给程序用
     from datetime import datetime, timezone, timedelta
-    pt = article.get('publish_time', 0) or 0
-    date_str = (datetime.fromtimestamp(pt, timezone(timedelta(hours=8))).strftime("%Y-%m-%d %H:%M")
-                if pt else "")
+
+    pt = article.get("publish_time", 0) or 0
+    date_str = (
+        datetime.fromtimestamp(pt, timezone(timedelta(hours=8))).strftime(
+            "%Y-%m-%d %H:%M"
+        )
+        if pt
+        else ""
+    )
 
     # author 微信常缺失 → 回退成公众号名，保证字段不空
     fm_lines = [
@@ -139,5 +151,7 @@ async def feed_article_md(article_id: int):
     return PlainTextResponse(
         content=md_payload,
         media_type="text/markdown",
-        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(filename)}"},
+        headers={
+            "Content-Disposition": f"attachment; filename*=UTF-8''{quote(filename)}"
+        },
     )

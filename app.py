@@ -25,7 +25,20 @@ from fastapi.middleware.cors import CORSMiddleware
 from pathlib import Path
 
 # 导入路由
-from routes import article, articles, search, admin, login, image, health, stats, rss, account, feed, export
+from routes import (
+    article,
+    articles,
+    search,
+    admin,
+    login,
+    image,
+    health,
+    stats,
+    rss,
+    account,
+    feed,
+    export,
+)
 from utils.rss_store import init_db
 from utils.rss_poller import rss_poller
 
@@ -68,16 +81,22 @@ async def lifespan(app: FastAPI):
 
         # 启动登录过期提醒器（自动检测凭证有效期并 webhook 通知）
         from utils.login_reminder import login_reminder
+
         await login_reminder.start()
     else:
-        logger.warning("SKIP_BACKGROUND_TASKS 已开 → 轮询器/登录提醒未启动（仅本地测试用）")
+        logger.warning(
+            "SKIP_BACKGROUND_TASKS 已开 → 轮询器/登录提醒未启动（仅本地测试用）"
+        )
 
     # [2026-07-05] MCP streamable-http session manager 随主 app 生命周期运行（否则 /mcp 请求 500）
     from contextlib import AsyncExitStack
+
     async with AsyncExitStack() as _mcp_stack:
-        if (os.getenv("ENABLE_MCP", "").lower() in ("1", "true", "yes")
-                and os.getenv("MCP_TOKEN")):
+        if os.getenv("ENABLE_MCP", "").lower() in ("1", "true", "yes") and os.getenv(
+            "MCP_TOKEN"
+        ):
             from mcp_server.server import mcp as _mcp_instance
+
             await _mcp_stack.enter_async_context(_mcp_instance.session_manager.run())
             logger.info("MCP session manager started")
         yield
@@ -126,9 +145,11 @@ class _GZipExceptMCP:
 
     async def __call__(self, scope, receive, send):
         path = scope.get("path", "")
-        if (scope.get("type") == "http"
-                and not path.startswith("/mcp")
-                and not path.endswith(_GZIP_SKIP_SUFFIX)):
+        if (
+            scope.get("type") == "http"
+            and not path.startswith("/mcp")
+            and not path.endswith(_GZIP_SKIP_SUFFIX)
+        ):
             await self._gzip(scope, receive, send)
         else:
             await self.app(scope, receive, send)
@@ -140,15 +161,23 @@ app.add_middleware(_GZipExceptMCP)
 app.include_router(health.router, prefix="/api", tags=["健康检查"])
 app.include_router(stats.router, prefix="/api", tags=["统计信息"])
 app.include_router(article.router, prefix="/api", tags=["文章内容"])
-app.include_router(articles.router, prefix="/api/public", tags=["文章列表"])  # 必须先注册
+app.include_router(
+    articles.router, prefix="/api/public", tags=["文章列表"]
+)  # 必须先注册
 app.include_router(search.router, prefix="/api/public", tags=["公众号搜索"])  # 后注册
 app.include_router(account.router, prefix="/api/public", tags=["公众号信息"])
 app.include_router(admin.router, prefix="/api/admin", tags=["管理"])
 app.include_router(login.router, prefix="/api/login", tags=["登录"])
 app.include_router(image.router, prefix="/api", tags=["图片代理"])
 app.include_router(rss.router, prefix="/api", tags=["RSS 订阅"])
-app.include_router(feed.router, prefix="/api", tags=["Feed（文章列表 / markdown 导出）"])
-app.include_router(export.router, prefix="/api", tags=["文章导出（整号 md/html/pdf/docx/epub/xlsx/json）"])
+app.include_router(
+    feed.router, prefix="/api", tags=["Feed（文章列表 / markdown 导出）"]
+)
+app.include_router(
+    export.router,
+    prefix="/api",
+    tags=["文章导出（整号 md/html/pdf/docx/epub/xlsx/json）"],
+)
 
 # ---------- MCP server（单机版 AI 客户端入口；ENABLE_MCP + MCP_TOKEN 静态 Bearer 鉴权） ----------
 # 让 Claude/Codex/Cline 等 AI 客户端直接搜索/订阅/读你的公众号文章。
@@ -163,6 +192,7 @@ if _ENABLE_MCP and _MCP_TOKEN:
     class _MCPGateMiddleware:
         """/mcp 网关：① 静态 Bearer Token 鉴权；② 无斜杠 /mcp 内部改写为 /mcp/ 消除 307
         （307 不带 WWW-Authenticate，Codex 等客户端斜杠规范化后会拿不到挑战/连不上）。"""
+
         def __init__(self, app):
             self.app = app
 
@@ -170,11 +200,22 @@ if _ENABLE_MCP and _MCP_TOKEN:
             if scope.get("type") == "http" and scope.get("path", "").startswith("/mcp"):
                 headers = dict(scope.get("headers") or [])
                 if headers.get(b"authorization", b"") != _MCP_BEARER:
-                    await send({"type": "http.response.start", "status": 401,
-                                "headers": [(b"content-type", b"application/json"),
-                                            (b"www-authenticate", b'Bearer realm="mcp"')]})
-                    await send({"type": "http.response.body",
-                                "body": b'{"error":"unauthorized","detail":"need Authorization: Bearer <MCP_TOKEN>"}'})
+                    await send(
+                        {
+                            "type": "http.response.start",
+                            "status": 401,
+                            "headers": [
+                                (b"content-type", b"application/json"),
+                                (b"www-authenticate", b'Bearer realm="mcp"'),
+                            ],
+                        }
+                    )
+                    await send(
+                        {
+                            "type": "http.response.body",
+                            "body": b'{"error":"unauthorized","detail":"need Authorization: Bearer <MCP_TOKEN>"}',
+                        }
+                    )
                     return
                 if scope.get("path") == "/mcp":  # 无斜杠 → 改写，避免 Mount 307
                     scope = dict(scope)
@@ -187,12 +228,15 @@ if _ENABLE_MCP and _MCP_TOKEN:
     app.mount("/mcp", _mcp_app)
     logger.info("MCP server mounted at /mcp (static bearer token)")
 elif _ENABLE_MCP and not _MCP_TOKEN:
-    logger.warning("ENABLE_MCP 已开但未设 MCP_TOKEN → MCP 未启用。请设置 MCP_TOKEN 环境变量。")
+    logger.warning(
+        "ENABLE_MCP 已开但未设 MCP_TOKEN → MCP 未启用。请设置 MCP_TOKEN 环境变量。"
+    )
 
 # 静态文件
 static_dir = Path(__file__).parent / "static"
 if static_dir.exists():
     app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
+
 
 @app.get("/api/redoc", include_in_schema=False)
 async def redoc_html():
@@ -209,46 +253,55 @@ async def redoc_html():
 <script src="https://cdnjs.cloudflare.com/ajax/libs/redoc/2.1.5/bundles/redoc.standalone.min.js"></script>
 </body></html>""")
 
+
 # 静态页面路由
 @app.get("/", include_in_schema=False)
 async def root():
     """首页 - 重定向到管理页面"""
     return FileResponse(static_dir / "admin.html")
 
+
 @app.get("/admin.html", include_in_schema=False)
 async def admin_page():
     """管理页面"""
     return FileResponse(static_dir / "admin.html")
+
 
 @app.get("/login.html", include_in_schema=False)
 async def login_page():
     """登录页面"""
     return FileResponse(static_dir / "login.html")
 
+
 @app.get("/verify.html", include_in_schema=False)
 async def verify_page():
     """验证页面"""
     return FileResponse(static_dir / "verify.html")
+
 
 @app.get("/rss.html", include_in_schema=False)
 async def rss_page():
     """RSS 订阅管理页面"""
     return FileResponse(static_dir / "rss.html")
 
+
 @app.get("/categories.html", include_in_schema=False)
 async def categories_page():
     """分类管理页面"""
     return FileResponse(static_dir / "categories.html")
+
 
 @app.get("/blacklist.html", include_in_schema=False)
 async def blacklist_page():
     """黑名单管理页面"""
     return FileResponse(static_dir / "blacklist.html")
 
+
 @app.get("/history.html", include_in_schema=False)
 async def history_page():
     """历史文章获取页面"""
     return FileResponse(static_dir / "history.html")
+
 
 if __name__ == "__main__":
     import os

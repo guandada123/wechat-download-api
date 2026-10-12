@@ -8,11 +8,9 @@
 管理路由 - FastAPI版本
 """
 
-import time
-
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
-from typing import Optional, List
+from typing import Optional
 from utils.auth_manager import auth_manager
 from utils import rss_store
 
@@ -21,8 +19,10 @@ router = APIRouter()
 
 # ── 状态管理 ─────────────────────────────────────────────
 
+
 class StatusResponse(BaseModel):
     """状态响应模型"""
+
     authenticated: bool
     loggedIn: bool
     account: str
@@ -50,6 +50,7 @@ async def logout():
 
 
 # ── 黑名单管理 ─────────────────────────────────────────────
+
 
 class BlacklistItem(BaseModel):
     id: int
@@ -99,10 +100,13 @@ async def add_to_blacklist(req: AddBlacklistRequest):
         fakeid=req.fakeid,
         nickname=req.nickname,
         reason=req.reason,
-        note=req.note or "手动添加"
+        note=req.note or "手动添加",
     )
     if success:
-        return {"success": True, "message": f"已将 {req.nickname or req.fakeid} 加入黑名单"}
+        return {
+            "success": True,
+            "message": f"已将 {req.nickname or req.fakeid} 加入黑名单",
+        }
     return {"success": False, "message": "添加失败"}
 
 
@@ -126,6 +130,7 @@ async def delete_blacklist_record(blacklist_id: int):
 
 # ── 分类管理 ─────────────────────────────────────────────
 
+
 class CategoryItem(BaseModel):
     id: int
     name: str
@@ -139,7 +144,9 @@ class CategoryItem(BaseModel):
 class CreateCategoryRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=50, description="分类名称")
     description: str = Field("", max_length=200, description="分类描述")
-    color: str = Field("blue", description="颜色: blue, green, red, purple, orange, gray")
+    color: str = Field(
+        "blue", description="颜色: blue, green, red, purple, orange, gray"
+    )
 
 
 class UpdateCategoryRequest(BaseModel):
@@ -176,12 +183,14 @@ async def get_categories():
 async def create_category(req: CreateCategoryRequest):
     """创建新分类"""
     category_id = rss_store.create_category(
-        name=req.name,
-        description=req.description,
-        color=req.color
+        name=req.name, description=req.description, color=req.color
     )
     if category_id:
-        return {"success": True, "id": category_id, "message": f"分类 '{req.name}' 创建成功"}
+        return {
+            "success": True,
+            "id": category_id,
+            "message": f"分类 '{req.name}' 创建成功",
+        }
     raise HTTPException(status_code=400, detail="分类名称已存在")
 
 
@@ -192,7 +201,7 @@ async def update_category(category_id: int, req: UpdateCategoryRequest):
         category_id=category_id,
         name=req.name,
         description=req.description,
-        color=req.color
+        color=req.color,
     )
     if success:
         return {"success": True, "message": "分类已更新"}
@@ -214,7 +223,7 @@ async def get_category_subscriptions(category_id: int):
     category = rss_store.get_category(category_id)
     if not category:
         raise HTTPException(status_code=404, detail="分类不存在")
-    
+
     subscriptions = rss_store.get_subscriptions_by_category(category_id)
     return {
         "category": CategoryItem(
@@ -226,7 +235,7 @@ async def get_category_subscriptions(category_id: int):
             subscription_count=len(subscriptions),
             created_at=category["created_at"],
         ),
-        "subscriptions": subscriptions
+        "subscriptions": subscriptions,
     }
 
 
@@ -238,7 +247,7 @@ async def set_subscription_category(fakeid: str, req: SetCategoryRequest):
         category = rss_store.get_category(req.category_id)
         if not category:
             raise HTTPException(status_code=404, detail="分类不存在")
-    
+
     success = rss_store.set_subscription_category(fakeid, req.category_id)
     if success:
         return {"success": True, "message": "分类已设置"}
@@ -246,6 +255,7 @@ async def set_subscription_category(fakeid: str, req: SetCategoryRequest):
 
 
 # ── 历史文章获取 ─────────────────────────────────────────────
+
 
 class FetchHistoryRequest(BaseModel):
     fakeid: str = Field(..., description="公众号ID")
@@ -259,24 +269,23 @@ class FetchHistoryResponse(BaseModel):
     new_count: int = 0
 
 
-@router.post("/history/fetch", response_model=FetchHistoryResponse, summary="获取历史文章")
+@router.post(
+    "/history/fetch", response_model=FetchHistoryResponse, summary="获取历史文章"
+)
 async def fetch_history_articles(req: FetchHistoryRequest):
     """
     获取公众号的历史文章并存入数据库。
     简化版：直接调用微信 API 获取历史文章列表，不涉及用户权限和付费逻辑。
     """
     from utils.auth_manager import auth_manager
-    
+
     # 检查登录状态
     status = auth_manager.get_status()
     if not status.get("authenticated"):
         return FetchHistoryResponse(
-            success=False,
-            message="未登录，请先扫码登录",
-            fetched_count=0,
-            new_count=0
+            success=False, message="未登录，请先扫码登录", fetched_count=0, new_count=0
         )
-    
+
     # 检查订阅是否存在
     subscriptions = rss_store.list_subscriptions()
     sub = next((s for s in subscriptions if s["fakeid"] == req.fakeid), None)
@@ -285,37 +294,33 @@ async def fetch_history_articles(req: FetchHistoryRequest):
             success=False,
             message="订阅不存在，请先添加订阅",
             fetched_count=0,
-            new_count=0
+            new_count=0,
         )
-    
+
     try:
         # 调用 poller 的内部方法获取文章列表
         fetched_count, new_count = await _fetch_history_internal(
-            fakeid=req.fakeid,
-            target_count=req.count
+            fakeid=req.fakeid, target_count=req.count
         )
-        
+
         return FetchHistoryResponse(
             success=True,
             message=f"获取完成，共获取 {fetched_count} 篇，新增 {new_count} 篇",
             fetched_count=fetched_count,
-            new_count=new_count
+            new_count=new_count,
         )
     except Exception as e:
         return FetchHistoryResponse(
-            success=False,
-            message=f"获取失败: {str(e)}",
-            fetched_count=0,
-            new_count=0
+            success=False, message=f"获取失败: {str(e)}", fetched_count=0, new_count=0
         )
 
 
 async def _fetch_history_internal(fakeid: str, target_count: int) -> tuple:
     """
     内部历史文章获取逻辑。
-    
+
     历史文章定义：通过深度获取功能拉取的文章（标记为 source='deep_fetch'）
-    
+
     流程：
     1. 获取数据库中已有的历史文章数量（source='deep_fetch'）
     2. 从已有历史文章的位置开始翻页，避免重复获取
@@ -324,36 +329,36 @@ async def _fetch_history_internal(fakeid: str, target_count: int) -> tuple:
        - 轮询器已拉取的文章保持 source='poll'（不更新）
        - 只有新文章被标记为 source='deep_fetch'
     5. 达到目标数量或无更多文章时停止
-    
+
     返回 (fetched_count, new_count)。
     """
     import httpx
     import json
     import asyncio
     import random
-    
+
     creds = auth_manager.get_credentials()
     if not creds or not creds.get("token"):
         raise ValueError("登录凭证无效")
-    
+
     # 验证订阅是否存在
     sub = rss_store.get_subscription(fakeid)
     if not sub:
         raise ValueError("订阅不存在")
-    
+
     # 获取数据库中已有的历史文章数量（source='deep_fetch'），从这个位置开始翻页
     existing_historical = rss_store.count_historical_articles(fakeid)
-    
+
     historical_articles = []
     batch_size = 10
     # 从已有历史文章位置开始（跳过已获取的）
     start_batch = existing_historical // batch_size
     batch_num = start_batch
     max_batches = start_batch + 50  # 最多再翻 50 页
-    
+
     while batch_num < max_batches and len(historical_articles) < target_count:
         begin = batch_num * batch_size
-        
+
         params = {
             "begin": begin,
             "count": batch_size,
@@ -371,7 +376,7 @@ async def _fetch_history_internal(fakeid: str, target_count: int) -> tuple:
             "Referer": "https://mp.weixin.qq.com/",
             "Cookie": creds["cookie"],
         }
-        
+
         async with httpx.AsyncClient(timeout=30.0) as client:
             resp = await client.get(
                 "https://mp.weixin.qq.com/cgi-bin/appmsgpublish",
@@ -380,15 +385,15 @@ async def _fetch_history_internal(fakeid: str, target_count: int) -> tuple:
             )
             resp.raise_for_status()
             result = resp.json()
-        
+
         base_resp = result.get("base_resp", {})
         ret_code = base_resp.get("ret", -1)
-        
+
         if ret_code == 200003:
             raise ValueError("触发验证码，请稍后重试")
         if ret_code != 0:
             raise ValueError(f"微信API错误: ret={ret_code}")
-        
+
         publish_page = result.get("publish_page", {})
         if isinstance(publish_page, str):
             try:
@@ -396,13 +401,13 @@ async def _fetch_history_internal(fakeid: str, target_count: int) -> tuple:
             except (json.JSONDecodeError, ValueError):
                 batch_num += 1
                 continue
-        
+
         if not isinstance(publish_page, dict):
             batch_num += 1
             continue
-        
+
         batch_articles = []
-        
+
         for item in publish_page.get("publish_list", []):
             publish_info = item.get("publish_info", {})
             if isinstance(publish_info, str):
@@ -417,35 +422,39 @@ async def _fetch_history_internal(fakeid: str, target_count: int) -> tuple:
                 # 数据库有唯一约束 UNIQUE(fakeid, link)
                 # 轮询器已拉取的文章（source='poll'）会保持原样
                 # 只有新文章才会被标记为 source='deep_fetch'
-                batch_articles.append({
-                    "aid": a.get("aid", ""),
-                    "title": a.get("title", ""),
-                    "link": a.get("link", ""),
-                    "digest": a.get("digest", ""),
-                    "cover": a.get("cover", ""),
-                    "author": a.get("author", ""),
-                    "publish_time": a.get("update_time", 0),
-                })
-        
+                batch_articles.append(
+                    {
+                        "aid": a.get("aid", ""),
+                        "title": a.get("title", ""),
+                        "link": a.get("link", ""),
+                        "digest": a.get("digest", ""),
+                        "cover": a.get("cover", ""),
+                        "author": a.get("author", ""),
+                        "publish_time": a.get("update_time", 0),
+                    }
+                )
+
         if batch_articles:
             historical_articles.extend(batch_articles)
-        
+
         # 检查停止条件
         articles_in_page = len(publish_page.get("publish_list", []))
         if articles_in_page < batch_size:
             # 没有更多文章了
             break
-        
+
         batch_num += 1
-        
+
         # 延迟避免频繁请求
         if len(historical_articles) < target_count:
             await asyncio.sleep(random.uniform(2, 4))
-    
+
     # 截取到目标数量
     historical_articles = historical_articles[:target_count]
-    
+
     # 保存到数据库（去重），标记为历史文章 'deep_fetch'
-    new_count = rss_store.save_articles(fakeid, historical_articles, source='deep_fetch')
-    
+    new_count = rss_store.save_articles(
+        fakeid, historical_articles, source="deep_fetch"
+    )
+
     return len(historical_articles), new_count

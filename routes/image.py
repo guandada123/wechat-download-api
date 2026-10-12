@@ -59,7 +59,9 @@ async def proxy_image(url: str = Query(..., description="图片URL")):
     client = httpx.AsyncClient(timeout=30.0)
     try:
         # [2026-07-20] 带合法 referer mp.weixin.qq.com：微信防盗链永远放行（比无 referer 更稳）
-        request = client.build_request("GET", url, headers={"Referer": "https://mp.weixin.qq.com/"})
+        request = client.build_request(
+            "GET", url, headers={"Referer": "https://mp.weixin.qq.com/"}
+        )
         response = await client.send(request, stream=True, follow_redirects=True)
     except Exception as e:
         await client.aclose()
@@ -90,7 +92,9 @@ async def proxy_image(url: str = Query(..., description="图片URL")):
             async for chunk in response.aiter_bytes(STREAM_CHUNK):
                 total += len(chunk)
                 if total > MAX_IMAGE_BYTES:
-                    logger.warning("Image %s exceeded MAX_IMAGE_BYTES, truncated", url[:80])
+                    logger.warning(
+                        "Image %s exceeded MAX_IMAGE_BYTES, truncated", url[:80]
+                    )
                     break
                 yield chunk
         finally:

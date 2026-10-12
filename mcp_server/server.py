@@ -3,6 +3,7 @@
 鉴权：不走 OAuth，由 app 层的静态 Bearer Token 中间件统一把关（单用户自托管最简）。
 挂载：app.mount("/mcp", mcp_app)。
 """
+
 import os
 import logging
 from urllib.parse import urlparse
@@ -23,7 +24,14 @@ def _transport_security() -> TransportSecuritySettings:
     p = urlparse(RESOURCE)
     hostname = p.hostname or "localhost"
     netloc = p.netloc or "localhost"
-    hosts = {netloc, f"{hostname}:*", "localhost", "localhost:*", "127.0.0.1", "127.0.0.1:*"}
+    hosts = {
+        netloc,
+        f"{hostname}:*",
+        "localhost",
+        "localhost:*",
+        "127.0.0.1",
+        "127.0.0.1:*",
+    }
     origins = set()
     if p.scheme and p.netloc:
         origins.update({f"{p.scheme}://{netloc}", f"{p.scheme}://{hostname}:*"})

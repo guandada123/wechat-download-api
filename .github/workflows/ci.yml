@@ -1,0 +1,32 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: Lint & Security
+    runs-on: ubuntu-latest
+    steps:
+      # 2026-10-13 新建：本仓库此前只有 tag 触发的发布流水线（docker-publish /
+      # docker-offline-export），从未有过质量门禁。action 按 SHA 钉死，防浮动 tag 静默弄红。
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.11'
+      - name: Install tools
+        run: pip install ruff bandit
+      - name: Ruff lint
+        run: ruff check .
+      - name: Ruff format
+        run: ruff format --check .
+      - name: Bandit security scan
+        # B608：rss_store 全部为 ? 占位符参数化查询（已人工核实，误报）；
+        # B104：app.run(host=...) 开发服务器绑定，生产走 uvicorn/Docker。
+        run: bandit -r . --skip B608,B104 -ll
