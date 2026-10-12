@@ -21,7 +21,8 @@ jobs:
         with:
           python-version: '3.11'
       - name: Install tools
-        run: pip install ruff bandit
+        # 钉死版本：新版本 ruff 默认规则集会变（如 EXE001），浮动版本会静默改变门禁口径
+        run: pip install ruff==0.15.17 bandit==1.9.4
       - name: Ruff lint
         run: ruff check .
       - name: Ruff format
