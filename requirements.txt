@@ -1,4 +1,6 @@
 # [2026-07-05] MCP 支持需要较新的 fastapi/pydantic/starlette，对齐已验证的版本。
+# [2026-10-13] 全量锁定版本见 requirements.lock（Dockerfile 构建源）；
+#   升级依赖：改下面的范围 → 按 lock 文件头方式重新生成 → 本地 docker build 验证。
 fastapi==0.137.1
 uvicorn[standard]==0.34.0
 pydantic==2.13.4

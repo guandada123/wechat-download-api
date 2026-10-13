@@ -11,10 +11,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libffi-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Python dependencies
-COPY requirements.txt .
+# Install Python dependencies（2026-10-13 起从 requirements.lock 安装 —— 全量锁定，
+# 消除范围声明导致的「同 Dockerfile 不同依赖」不可复现问题；升级流程：改
+# requirements.txt 范围 → 重新生成 lock → 重建验证）
+COPY requirements.lock .
 RUN pip install --no-cache-dir --upgrade pip && \
-    pip wheel --no-cache-dir --wheel-dir=/app/wheels -r requirements.txt
+    pip wheel --no-cache-dir --wheel-dir=/app/wheels -r requirements.lock
 
 
 FROM python:3.11-slim
