@@ -1,5 +1,10 @@
 name: CI
 
+# 2026-10-17 注册探针：本 workflow 自 2026-10-13 引入以来，main 推送从未触发过
+# 任何 run（gh run list --branch main 仅 4 月两次 workflow_dispatch），
+# 且 Actions API 对本文件 404（同目录 docker-publish.yml 可正常解析）。
+# 本提交用于实证：推送到默认分支后 GitHub 是否注册本 workflow。
+
 on:
   push:
     branches: [main]
