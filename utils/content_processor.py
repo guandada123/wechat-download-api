@@ -12,7 +12,7 @@ from urllib.parse import quote
 logger = logging.getLogger(__name__)
 
 
-def process_article_content(html: str, proxy_base_url: str = None) -> Dict:
+def process_article_content(html: str, proxy_base_url: str | None = None) -> Dict:
     """
     处理文章内容，保持图文顺序并代理图片
 

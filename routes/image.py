@@ -65,7 +65,7 @@ async def proxy_image(url: str = Query(..., description="图片URL")):
         response = await client.send(request, stream=True, follow_redirects=True)
     except Exception as e:
         await client.aclose()
-        raise HTTPException(status_code=500, detail=f"下载图片失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"下载图片失败: {str(e)}") from e
 
     if response.status_code != 200:
         status = response.status_code

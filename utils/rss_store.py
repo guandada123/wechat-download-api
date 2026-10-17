@@ -690,7 +690,10 @@ def create_category(
 
 
 def update_category(
-    category_id: int, name: str = None, description: str = None, color: str = None
+    category_id: int,
+    name: str | None = None,
+    description: str | None = None,
+    color: str | None = None,
 ) -> bool:
     """更新分类"""
     conn = _get_conn()

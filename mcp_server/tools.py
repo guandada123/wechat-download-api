@@ -29,7 +29,7 @@ def register_tools(mcp, adapter):
         try:
             return await adapter.search_accounts(query)
         except RuntimeError as e:
-            raise ToolError(str(e))
+            raise ToolError(str(e)) from e
 
     @mcp.tool()
     async def get_recent_articles(
@@ -52,7 +52,7 @@ def register_tools(mcp, adapter):
         try:
             return await adapter.read_article(int(article_id))
         except ValueError as e:
-            raise ToolError(str(e))
+            raise ToolError(str(e)) from e
 
     @mcp.tool()
     async def subscribe_account(fakeid: str) -> dict:
@@ -60,7 +60,7 @@ def register_tools(mcp, adapter):
         try:
             return await adapter.subscribe_account(fakeid)
         except ValueError as e:
-            raise ToolError(str(e))
+            raise ToolError(str(e)) from e
 
     @mcp.tool()
     async def unsubscribe_account(fakeid: str) -> dict:

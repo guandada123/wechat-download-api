@@ -31,9 +31,9 @@ _sessions = {}
 async def proxy_wx_request(
     request: Request,
     url: str,
-    params: dict = None,
+    params: dict | None = None,
     method: str = "GET",
-    data: dict = None,
+    data: dict | None = None,
 ):
     """
     代理微信请求,转发浏览器cookies
@@ -301,13 +301,13 @@ async def get_qrcode(request: Request):
         raise HTTPException(
             status_code=e.response.status_code,
             detail=f"获取二维码失败: {e.response.status_code}",
-        )
+        ) from e
     except Exception as e:
         print(f"[ERROR] QR code error: {str(e)}")
         import traceback
 
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"获取二维码失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"获取二维码失败: {str(e)}") from e
 
 
 @router.get("/scan", summary="检查扫码状态", include_in_schema=True)
@@ -372,10 +372,12 @@ async def check_scan_status(request: Request):
         raise HTTPException(
             status_code=e.response.status_code,
             detail=f"检查扫码状态失败: {e.response.status_code}",
-        )
+        ) from e
     except Exception as e:
         print(f"[ERROR] scan status error: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"检查扫码状态失败: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"检查扫码状态失败: {str(e)}"
+        ) from e
 
 
 @router.post("/bizlogin", summary="完成登录", include_in_schema=True)
@@ -624,7 +626,7 @@ async def manual_login(request: LoginRequest):
         else:
             return {"success": False, "message": "保存登录凭证失败"}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"保存失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"保存失败: {str(e)}") from e
 
 
 @router.get("/info", summary="获取登录信息")

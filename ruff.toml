@@ -3,6 +3,14 @@
 # 历史存量 41 项违规已清理（18 未用导入 / 10 f-string 空占位 / 9 E402 / 2 死变量 /
 # 1 裸 except / 1 歧义变量名），此后由 pre-commit + CI 共同守住。
 
+[lint]
+# 2026-10-17 加固（承接 StockInsight 代码审查修复报告_20261017.md 同族条目）：
+# 三条规则全仓已为 0，纳入门禁零成本防回归。
+#   RUF006  dangling-asyncio-task —— create_task/ensure_future 无强引用会被 GC
+#   RUF013  implicit-optional     —— 显式 Optional（6 处已修）
+#   B904    raise-without-from    —— 保留异常链（9 处已修，AST 精确补 `from <名>`）
+extend-select = ["RUF006", "RUF013", "B904"]
+
 [lint.per-file-ignores]
 # app.py：load_dotenv() 必须在读取环境变量的模块导入**之前**执行
 # （路由/工具模块可能在导入期读 env）——此处的 E402 是有意的加载顺序设计，非疏忽。
