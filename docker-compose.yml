@@ -19,7 +19,9 @@ services:
     restart: unless-stopped
     user: "0:0"
     ports:
-      - "5001:5000"
+      # 2026-10-13 安全收紧：0.0.0.0 → 127.0.0.1（消费者 Claw backfill_wx_content 等
+      #   均走 localhost，无局域网引用）。回滚：去掉 127.0.0.1: 前缀后 up -d
+      - "127.0.0.1:5001:5000"
     volumes:
       - ./data:/app/data
       - ./.env:/app/.env:ro
