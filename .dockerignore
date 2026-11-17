@@ -28,6 +28,11 @@ env/
 .DS_Store
 Thumbs.db
 
+# Secrets —— 本镜像由 docker-publish.yml 公开发布到 Docker Hub，
+# 绝不可把 .env（含 WECHAT_TOKEN / WECHAT_COOKIE 等会话凭据）打进镜像。
+.env
+.env.*
+
 # Data (mounted as volume)
 data/
 *.db
